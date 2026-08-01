@@ -110,7 +110,8 @@ class AuthControllerIntegrationTests {
 
         mockMvc.perform(get("/api/v1/admin/users")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("FORBIDDEN"));
 
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshCookie))
                 .andExpect(status().isOk())
@@ -235,5 +236,22 @@ class AuthControllerIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"reset@example.com\",\"password\":\"new-password-456\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void publicEndpointsIgnoreInvalidBearerAndProtectedEndpointsReturnProblemJson() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer null")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Validation failed"));
+
+        mockMvc.perform(get("/api/v1/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHENTICATED"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Authentication is required or the access token is invalid."));
     }
 }

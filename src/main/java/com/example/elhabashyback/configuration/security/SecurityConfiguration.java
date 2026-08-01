@@ -16,16 +16,30 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 @EnableConfigurationProperties({AppJwtProperties.class, AppCorsProperties.class, AppMailProperties.class})
 public class SecurityConfiguration {
+
+    private static final Set<String> PUBLIC_AUTH_PATHS = Set.of(
+            "/api/v1/auth/register",
+            "/api/v1/auth/login",
+            "/api/v1/auth/activate",
+            "/api/v1/auth/resend-activation",
+            "/api/v1/auth/forgot-password",
+            "/api/v1/auth/reset-password",
+            "/api/v1/auth/refresh",
+            "/api/v1/auth/logout"
+    );
 
     @Bean
     PasswordEncoder passwordEncoder() {
@@ -56,7 +70,9 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            BearerTokenResolver bearerTokenResolver,
+            RestSecurityErrorHandler securityErrorHandler
     ) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
@@ -66,23 +82,38 @@ public class SecurityConfiguration {
                 .httpBasic(basic -> basic.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(
-                                "/api/v1/auth/register",
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/activate",
-                                "/api/v1/auth/resend-activation",
-                                "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password",
-                                "/api/v1/auth/refresh",
-                                "/api/v1/auth/logout"
-                        ).permitAll()
+                        .requestMatchers(PUBLIC_AUTH_PATHS.toArray(String[]::new)).permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/auth/me", "/api/v1/users/**").authenticated()
                         .anyRequest().denyAll())
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler))
                 .oauth2ResourceServer(oauth -> oauth
+                        .bearerTokenResolver(bearerTokenResolver)
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler)
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
                 .build();
+    }
+
+    @Bean
+    BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver delegate = new DefaultBearerTokenResolver();
+        return request -> {
+            String path = request.getRequestURI();
+            if (!request.getContextPath().isBlank() && path.startsWith(request.getContextPath())) {
+                path = path.substring(request.getContextPath().length());
+            }
+            if (path.length() > 1 && path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
+            boolean publicEndpoint = HttpMethod.OPTIONS.matches(request.getMethod())
+                    || PUBLIC_AUTH_PATHS.contains(path)
+                    || path.startsWith("/api/v1/public/");
+            return publicEndpoint ? null : delegate.resolve(request);
+        };
     }
 
     @Bean

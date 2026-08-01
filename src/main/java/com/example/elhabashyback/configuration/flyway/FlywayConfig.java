@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration
 // Never allow the destructive clean strategy when the production profile is active.
-@Profile("clean & !prod")
+@Profile("clean")
 public class FlywayConfig {
 
     @Bean
