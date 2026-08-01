@@ -18,8 +18,8 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String email) {
 
-        Users user = userRepository.findUsersByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("Email you entered is invalid "+ email));
+        Users user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
 
         return new CustomUserDetails(user);
     }

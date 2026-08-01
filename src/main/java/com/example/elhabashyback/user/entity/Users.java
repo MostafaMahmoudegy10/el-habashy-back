@@ -44,7 +44,9 @@ public class Users {
     @PrePersist
     public void prePersist(){
         this.createsAt = Instant.now();
-        this.enabled=false;
+        if (this.enabled == null) {
+            this.enabled = true;
+        }
     }
 
 }
