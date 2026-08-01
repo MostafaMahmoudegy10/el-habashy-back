@@ -3,6 +3,7 @@ package com.example.elhabashyback.common.exception;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.mail.MailException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -15,6 +16,15 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(MailException.class)
+    ProblemDetail mailUnavailable(MailException exception) {
+        ProblemDetail problem = problem(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Email service is temporarily unavailable. Please try again later.");
+        problem.setProperty("errorCode", "EMAIL_SERVICE_UNAVAILABLE");
+        return problem;
+    }
 
     @ExceptionHandler(DisabledException.class)
     ProblemDetail disabled(DisabledException exception) {

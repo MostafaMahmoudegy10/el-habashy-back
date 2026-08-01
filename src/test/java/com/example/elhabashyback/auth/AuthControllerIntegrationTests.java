@@ -16,6 +16,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mail.MailSendException;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import org.mockito.ArgumentCaptor;
 
 @SpringBootTest
@@ -253,5 +255,25 @@ class AuthControllerIntegrationTests {
                 .andExpect(jsonPath("$.errorCode").value("UNAUTHENTICATED"))
                 .andExpect(jsonPath("$.detail")
                         .value("Authentication is required or the access token is invalid."));
+    }
+
+    @Test
+    void smtpFailureReturnsServiceUnavailableInsteadOfUnauthorizedErrorDispatch() throws Exception {
+        doThrow(new MailSendException("SMTP unavailable"))
+                .when(mailService).sendActivationEmail(any(), any());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "firstName":"Mail",
+                                  "lastName":"Failure",
+                                  "email":"mail-failure@example.com",
+                                  "password":"strong-password-123"
+                                }
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.errorCode").value("EMAIL_SERVICE_UNAVAILABLE"));
     }
 }

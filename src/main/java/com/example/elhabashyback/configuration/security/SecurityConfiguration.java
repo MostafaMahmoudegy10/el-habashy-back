@@ -1,5 +1,6 @@
 package com.example.elhabashyback.configuration.security;
 
+import jakarta.servlet.DispatcherType;
 import com.example.elhabashyback.configuration.mail.AppMailProperties;
 import com.example.elhabashyback.user.service.CustomUserDetailsService;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -81,6 +82,7 @@ public class SecurityConfiguration {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_AUTH_PATHS.toArray(String[]::new)).permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
