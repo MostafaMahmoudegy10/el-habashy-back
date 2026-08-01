@@ -5,6 +5,7 @@ import com.example.elhabashyback.user.entity.Users;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import org.springframework.mail.MailPreparationException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -46,14 +47,14 @@ public class ElHabashyMailService {
     private void send(String recipient, String subject, String plainText, String html) {
         MimeMessage message = mailSender.createMimeMessage();
         try {
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
             helper.setFrom(properties.from());
             helper.setTo(recipient);
             helper.setSubject(subject);
             helper.setText(plainText, html);
-            mailSender.send(message);
-        } catch (MessagingException exception) {
-            throw new IllegalStateException("Could not prepare email message", exception);
+        } catch (MessagingException | IllegalStateException exception) {
+            throw new MailPreparationException("Could not prepare email message", exception);
         }
+        mailSender.send(message);
     }
 }
