@@ -21,10 +21,11 @@ This plan mirrors the current React dashboard in `el-habashy-front`. Each delive
 
 Seed the six dashboard sectors: real estate, movables, cars, antiques, scrap, and other.
 
-- `GET /api/v1/public/sectors`
-- `PATCH /api/v1/admin/sectors/{code}`
+- [x] `GET /api/v1/public/sectors`
+- [x] `PATCH /api/v1/admin/sectors/{code}`
+- [x] Add the database migration, idempotent seed data, validation, and authorization coverage.
 
-Then replace the sectors `localStorage` state in the frontend.
+The frontend connection remains pending until the API is approved in Postman.
 
 ## 2. Listings and auctions
 
