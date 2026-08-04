@@ -1,5 +1,6 @@
 package com.example.elhabashyback.common.exception;
 
+import com.example.elhabashyback.media.exception.MediaUploadException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -55,6 +56,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     ProblemDetail notFound(ResourceNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    ProblemDetail badRequest(BadRequestException exception) {
+        return problem(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(MediaUploadException.class)
+    ProblemDetail mediaUpload(MediaUploadException exception) {
+        ProblemDetail problem = problem(HttpStatus.BAD_GATEWAY, exception.getMessage());
+        problem.setProperty("errorCode", "MEDIA_UPLOAD_FAILED");
+        return problem;
     }
 
     private ProblemDetail problem(HttpStatus status, String detail) {

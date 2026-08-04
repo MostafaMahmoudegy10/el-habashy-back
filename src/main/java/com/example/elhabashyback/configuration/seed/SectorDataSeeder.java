@@ -5,6 +5,7 @@ import com.example.elhabashyback.sector.repository.SectorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,6 +13,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@Order(20)
 public class SectorDataSeeder implements ApplicationRunner {
 
     private static final List<SectorSeed> SECTORS = List.of(

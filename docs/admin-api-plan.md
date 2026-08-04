@@ -31,15 +31,22 @@ The frontend connection remains pending until the API is approved in Postman.
 
 Add listings, localized content, specifications, images, SEO fields, dates, status, and featured state. Seed realistic listings for pagination and filters.
 
-- `GET /api/v1/public/listings`
-- `GET /api/v1/public/listings/{slug}`
-- `GET /api/v1/admin/listings`
-- `POST /api/v1/admin/listings`
-- `PUT /api/v1/admin/listings/{id}`
-- `PATCH /api/v1/admin/listings/{id}/status`
-- `DELETE /api/v1/admin/listings/{id}`
+- [x] `GET /api/v1/public/listings`
+- [x] `GET /api/v1/public/listings/{slug}`
+- [x] `GET /api/v1/admin/listings`
+- [x] `POST /api/v1/admin/listings`
+- [x] `PUT /api/v1/admin/listings/{id}`
+- [x] `PATCH /api/v1/admin/listings/{id}/status`
+- [x] `DELETE /api/v1/admin/listings/{id}`
+- [x] `POST /api/v1/admin/listings/{listingId}/media/uploads` issues a one-hour signed Cloudinary upload ticket.
+- [x] Images upload directly as multipart data; videos upload directly in sequential 6 MiB chunks using one upload ID and `Content-Range`.
+- [x] `POST /api/v1/admin/listings/{listingId}/media/{mediaId}/complete` verifies Cloudinary's response signature before publishing media.
+- [x] `POST /api/v1/admin/listings/{listingId}/media/{mediaId}/fail`
+- [x] `DELETE /api/v1/admin/listings/{listingId}/media/{mediaId}`
+- [x] Store thumbnail, gallery images, and video in separate `listing_media` rows linked to the listing, with upload lifecycle state.
+- [x] Add migration, 18 idempotent seed listings, pagination/filtering, validation, and authorization coverage.
 
-Media upload will be delivered with this domain before the create/edit forms are connected.
+The frontend connection remains pending until the API is approved in Postman.
 
 ## 3. Listing analytics and dashboard overview
 
