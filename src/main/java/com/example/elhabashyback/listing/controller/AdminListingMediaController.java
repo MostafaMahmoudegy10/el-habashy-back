@@ -1,20 +1,22 @@
 package com.example.elhabashyback.listing.controller;
 
-import com.example.elhabashyback.listing.dto.CompleteMediaUploadRequest;
-import com.example.elhabashyback.listing.dto.CreateMediaUploadRequest;
-import com.example.elhabashyback.listing.dto.FailMediaUploadRequest;
+import com.example.elhabashyback.common.exception.BadRequestException;
 import com.example.elhabashyback.listing.dto.ListingMediaResponse;
-import com.example.elhabashyback.listing.dto.MediaUploadTicketResponse;
+import com.example.elhabashyback.listing.entity.MediaRole;
 import com.example.elhabashyback.listing.service.ListingMediaService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.net.URI;
 
 @RestController
 @RequestMapping("/api/v1/admin/listings/{listingId}/media")
@@ -23,30 +25,34 @@ public class AdminListingMediaController {
 
     private final ListingMediaService mediaService;
 
-    @PostMapping("/uploads")
-    MediaUploadTicketResponse createUpload(
+    @PostMapping(value = "/images/{role}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    ResponseEntity<ListingMediaResponse> uploadImage(
             @PathVariable Long listingId,
-            @Valid @RequestBody CreateMediaUploadRequest request
+            @PathVariable String role,
+            @RequestPart("file") MultipartFile file
     ) {
-        return mediaService.createUpload(listingId, request);
+        MediaRole mediaRole = parseImageRole(role);
+        ListingMediaResponse response = mediaService.uploadImage(listingId, file, mediaRole);
+        return ResponseEntity.created(mediaLocation(listingId, response.id())).body(response);
     }
 
-    @PostMapping("/{mediaId}/complete")
-    ListingMediaResponse completeUpload(
+    @PostMapping(value = "/videos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    ResponseEntity<ListingMediaResponse> uploadVideo(
             @PathVariable Long listingId,
-            @PathVariable Long mediaId,
-            @Valid @RequestBody CompleteMediaUploadRequest request
+            @RequestPart("file") MultipartFile file
     ) {
-        return mediaService.completeUpload(listingId, mediaId, request);
+        ListingMediaResponse response = mediaService.acceptVideo(listingId, file);
+        return ResponseEntity.accepted()
+                .location(mediaLocation(listingId, response.id()))
+                .body(response);
     }
 
-    @PostMapping("/{mediaId}/fail")
-    ListingMediaResponse failUpload(
+    @GetMapping("/{mediaId}")
+    ListingMediaResponse get(
             @PathVariable Long listingId,
-            @PathVariable Long mediaId,
-            @Valid @RequestBody FailMediaUploadRequest request
+            @PathVariable Long mediaId
     ) {
-        return mediaService.failUpload(listingId, mediaId, request.reason());
+        return mediaService.get(listingId, mediaId);
     }
 
     @DeleteMapping("/{mediaId}")
@@ -56,5 +62,21 @@ public class AdminListingMediaController {
     ) {
         mediaService.delete(listingId, mediaId);
         return ResponseEntity.noContent().build();
+    }
+
+    private MediaRole parseImageRole(String role) {
+        try {
+            MediaRole value = MediaRole.fromValue(role);
+            if (value == MediaRole.VIDEO) {
+                throw new BadRequestException("Image role must be thumbnail or gallery");
+            }
+            return value;
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Image role must be thumbnail or gallery");
+        }
+    }
+
+    private URI mediaLocation(Long listingId, Long mediaId) {
+        return URI.create("/api/v1/admin/listings/" + listingId + "/media/" + mediaId);
     }
 }

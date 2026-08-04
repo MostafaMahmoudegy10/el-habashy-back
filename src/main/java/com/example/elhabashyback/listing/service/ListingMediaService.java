@@ -1,36 +1,26 @@
 package com.example.elhabashyback.listing.service;
 
 import com.example.elhabashyback.common.exception.BadRequestException;
-import com.example.elhabashyback.common.exception.ConflictException;
-import com.example.elhabashyback.common.exception.ResourceNotFoundException;
-import com.example.elhabashyback.configuration.media.CloudinaryProperties;
-import com.example.elhabashyback.listing.dto.CompleteMediaUploadRequest;
-import com.example.elhabashyback.listing.dto.CreateMediaUploadRequest;
 import com.example.elhabashyback.listing.dto.ListingMediaResponse;
-import com.example.elhabashyback.listing.dto.MediaUploadTicketResponse;
-import com.example.elhabashyback.listing.entity.Listing;
-import com.example.elhabashyback.listing.entity.ListingMedia;
 import com.example.elhabashyback.listing.entity.MediaRole;
 import com.example.elhabashyback.listing.entity.MediaType;
-import com.example.elhabashyback.listing.entity.MediaUploadStatus;
-import com.example.elhabashyback.listing.repository.ListingMediaRepository;
-import com.example.elhabashyback.listing.repository.ListingRepository;
 import com.example.elhabashyback.media.exception.MediaUploadException;
-import com.example.elhabashyback.media.service.CloudinarySignatureService;
+import com.example.elhabashyback.media.service.CloudinaryUploadClient;
+import com.example.elhabashyback.media.service.CloudinaryUploadResult;
+import com.example.elhabashyback.media.service.MediaStagingStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.time.Instant;
+import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class ListingMediaService {
 
-    public static final int VIDEO_CHUNK_SIZE = 6 * 1024 * 1024;
     private static final long MAX_IMAGE_BYTES = 20L * 1024L * 1024L;
     private static final long MAX_VIDEO_BYTES = 5L * 1024L * 1024L * 1024L;
     private static final Set<String> IMAGE_CONTENT_TYPES = Set.of(
@@ -39,178 +29,138 @@ public class ListingMediaService {
     private static final Set<String> VIDEO_CONTENT_TYPES = Set.of(
             "video/mp4", "video/webm", "video/quicktime", "video/x-matroska"
     );
+    private static final Map<String, String> CONTENT_TYPES_BY_EXTENSION = Map.of(
+            "jpg", "image/jpeg",
+            "jpeg", "image/jpeg",
+            "png", "image/png",
+            "webp", "image/webp",
+            "gif", "image/gif",
+            "mp4", "video/mp4",
+            "webm", "video/webm",
+            "mov", "video/quicktime",
+            "mkv", "video/x-matroska"
+    );
 
-    private final ListingRepository listingRepository;
-    private final ListingMediaRepository mediaRepository;
-    private final CloudinaryProperties cloudinaryProperties;
-    private final CloudinarySignatureService signatureService;
+    private final CloudinaryUploadClient cloudinaryUploadClient;
+    private final ListingMediaStateService stateService;
+    private final MediaStagingStorage stagingStorage;
+    private final ListingVideoUploadWorker videoUploadWorker;
 
-    @Transactional
-    public MediaUploadTicketResponse createUpload(Long listingId, CreateMediaUploadRequest request) {
-        requireCloudinaryConfiguration();
-        Listing listing = getListing(listingId);
-        String contentType = request.contentType().trim().toLowerCase(Locale.ROOT);
-        MediaType mediaType = resolveMediaType(contentType);
-        validateRoleAndSize(listingId, mediaType, request.role(), request.bytes());
-
-        String publicId = buildPublicId(listingId);
-        long timestamp = Instant.now().getEpochSecond();
-        ListingMedia media = new ListingMedia();
-        media.setListing(listing);
-        media.setMediaType(mediaType);
-        media.setMediaRole(request.role());
-        media.setUploadStatus(MediaUploadStatus.UPLOADING);
-        media.setFileName(request.fileName().trim());
-        media.setContentType(contentType);
-        media.setExpectedBytes(request.bytes());
-        media.setPublicId(publicId);
-        media.setDisplayOrder(mediaRepository.findMaximumDisplayOrder(listingId) + 1);
-        mediaRepository.saveAndFlush(media);
-
-        String resourceType = mediaType == MediaType.VIDEO ? "video" : "image";
-        return new MediaUploadTicketResponse(
-                ListingMediaResponse.from(media),
-                "https://api.cloudinary.com/v1_1/" + cloudinaryProperties.cloudName() + "/" + resourceType + "/upload",
-                cloudinaryProperties.cloudName(),
-                cloudinaryProperties.apiKey(),
-                timestamp,
-                signatureService.signUpload(publicId, timestamp),
-                publicId,
-                resourceType,
-                VIDEO_CHUNK_SIZE,
-                Instant.ofEpochSecond(timestamp + 3600)
-        );
-    }
-
-    @Transactional
-    public ListingMediaResponse completeUpload(
-            Long listingId,
-            Long mediaId,
-            CompleteMediaUploadRequest request
-    ) {
-        ListingMedia media = getMedia(listingId, mediaId);
-        if (media.getUploadStatus() == MediaUploadStatus.READY) {
-            return ListingMediaResponse.from(media);
-        }
-        if (media.getUploadStatus() == MediaUploadStatus.FAILED) {
-            throw new ConflictException("Failed media upload cannot be completed");
-        }
-        validateCloudinaryResponse(media, request);
-
-        media.setUploadStatus(MediaUploadStatus.READY);
-        media.setMediaUrl(request.secureUrl().trim());
-        media.setFormat(request.format().trim().toLowerCase(Locale.ROOT));
-        media.setWidth(request.width());
-        media.setHeight(request.height());
-        media.setActualBytes(request.bytes());
-        media.setDurationSeconds(request.duration());
-        media.setCloudinaryVersion(request.version());
-        media.setFailureReason(null);
-        mediaRepository.flush();
-        return ListingMediaResponse.from(media);
-    }
-
-    @Transactional
-    public ListingMediaResponse failUpload(Long listingId, Long mediaId, String reason) {
-        ListingMedia media = getMedia(listingId, mediaId);
-        if (media.getUploadStatus() == MediaUploadStatus.READY) {
-            throw new ConflictException("Ready media cannot be marked as failed");
-        }
-        media.setUploadStatus(MediaUploadStatus.FAILED);
-        media.setFailureReason(reason.trim());
-        mediaRepository.flush();
-        return ListingMediaResponse.from(media);
-    }
-
-    @Transactional
-    public void delete(Long listingId, Long mediaId) {
-        ListingMedia media = getMedia(listingId, mediaId);
-        mediaRepository.delete(media);
-        mediaRepository.flush();
-    }
-
-    private void validateCloudinaryResponse(ListingMedia media, CompleteMediaUploadRequest request) {
-        String expectedResourceType = media.getMediaType() == MediaType.VIDEO ? "video" : "image";
-        if (!media.getPublicId().equals(request.publicId())) {
-            throw new BadRequestException("Cloudinary publicId does not match the upload ticket");
-        }
-        if (!expectedResourceType.equalsIgnoreCase(request.resourceType())) {
-            throw new BadRequestException("Cloudinary resource type does not match the uploaded media");
-        }
-        if (request.bytes() != media.getExpectedBytes()) {
-            throw new BadRequestException("Uploaded media size does not match the upload ticket");
-        }
-        if (media.getMediaType() == MediaType.VIDEO && request.duration() == null) {
-            throw new BadRequestException("Cloudinary video duration is required");
-        }
-        if (media.getMediaType() == MediaType.IMAGE && request.duration() != null) {
-            throw new BadRequestException("Image media cannot have a video duration");
-        }
-        String expectedUrlPrefix = "https://res.cloudinary.com/" + cloudinaryProperties.cloudName() + "/";
-        if (!request.secureUrl().startsWith(expectedUrlPrefix)) {
-            throw new BadRequestException("Cloudinary secure URL is invalid");
-        }
-        if (!signatureService.verifyUploadResponse(request.publicId(), request.version(), request.signature())) {
-            throw new BadRequestException("Cloudinary response signature is invalid");
+    public ListingMediaResponse uploadImage(Long listingId, MultipartFile file, MediaRole role) {
+        cloudinaryUploadClient.ensureConfigured();
+        String fileName = fileName(file);
+        String contentType = contentType(file, fileName);
+        validateImage(file, contentType, role);
+        PendingListingMedia pending = stateService.createPending(
+                listingId, MediaType.IMAGE, role, fileName, contentType, file.getSize());
+        try {
+            CloudinaryUploadResult result = cloudinaryUploadClient.uploadImage(
+                    file, pending.publicId(), contentType);
+            return stateService.markReady(listingId, pending.mediaId(), result);
+        } catch (RuntimeException exception) {
+            stateService.markFailed(listingId, pending.mediaId(), exception.getMessage());
+            throw exception;
         }
     }
 
-    private MediaType resolveMediaType(String contentType) {
-        if (IMAGE_CONTENT_TYPES.contains(contentType)) {
-            return MediaType.IMAGE;
+    public ListingMediaResponse acceptVideo(Long listingId, MultipartFile file) {
+        cloudinaryUploadClient.ensureConfigured();
+        String fileName = fileName(file);
+        String contentType = contentType(file, fileName);
+        validateVideo(file, contentType);
+        PendingListingMedia pending = stateService.createPending(
+                listingId, MediaType.VIDEO, MediaRole.VIDEO, fileName, contentType, file.getSize());
+        Path stagedFile;
+        try {
+            stagedFile = stagingStorage.stage(file, pending.mediaId());
+        } catch (RuntimeException exception) {
+            stateService.markFailed(listingId, pending.mediaId(), exception.getMessage());
+            throw exception;
         }
-        if (VIDEO_CONTENT_TYPES.contains(contentType)) {
-            return MediaType.VIDEO;
-        }
-        throw new BadRequestException("Unsupported image or video content type");
-    }
 
-    private void validateRoleAndSize(Long listingId, MediaType type, MediaRole role, long bytes) {
-        if (type == MediaType.IMAGE) {
-            if (role == MediaRole.VIDEO) {
-                throw new BadRequestException("Image media role must be thumbnail or gallery");
-            }
-            if (bytes > MAX_IMAGE_BYTES) {
-                throw new BadRequestException("Each image must not exceed 20 MB");
-            }
-        } else {
-            if (role != MediaRole.VIDEO) {
-                throw new BadRequestException("Video media role must be video");
-            }
-            if (bytes > MAX_VIDEO_BYTES) {
-                throw new BadRequestException("Video must not exceed 5 GB");
-            }
-        }
-        if ((role == MediaRole.THUMBNAIL || role == MediaRole.VIDEO)
-                && mediaRepository.existsByListingIdAndMediaRoleAndUploadStatusNot(
+        VideoUploadJob job = new VideoUploadJob(
                 listingId,
-                role,
-                MediaUploadStatus.FAILED
-        )) {
-            throw new ConflictException("Listing already has a " + role.value());
+                pending.mediaId(),
+                pending.publicId(),
+                fileName,
+                contentType,
+                file.getSize(),
+                stagedFile
+        );
+        try {
+            videoUploadWorker.upload(job);
+        } catch (RuntimeException exception) {
+            try {
+                stagingStorage.delete(stagedFile);
+            } finally {
+                stateService.markFailed(listingId, pending.mediaId(), "Video upload queue is unavailable");
+            }
+            throw new MediaUploadException("Video upload queue is unavailable", exception);
+        }
+        return pending.response();
+    }
+
+    public ListingMediaResponse get(Long listingId, Long mediaId) {
+        return stateService.get(listingId, mediaId);
+    }
+
+    public void delete(Long listingId, Long mediaId) {
+        stateService.delete(listingId, mediaId);
+    }
+
+    private void validateImage(MultipartFile file, String contentType, MediaRole role) {
+        validateNotEmpty(file);
+        if (role == MediaRole.VIDEO) {
+            throw new BadRequestException("Image role must be thumbnail or gallery");
+        }
+        if (!IMAGE_CONTENT_TYPES.contains(contentType)) {
+            throw new BadRequestException("Unsupported image content type");
+        }
+        if (file.getSize() > MAX_IMAGE_BYTES) {
+            throw new BadRequestException("Each image must not exceed 20 MB");
         }
     }
 
-    private String buildPublicId(Long listingId) {
-        String baseFolder = cloudinaryProperties.folder() == null || cloudinaryProperties.folder().isBlank()
-                ? "el-habashy/listings"
-                : cloudinaryProperties.folder().replaceAll("^/+|/+$", "");
-        return baseFolder + "/" + listingId + "/" + UUID.randomUUID();
-    }
-
-    private void requireCloudinaryConfiguration() {
-        if (!cloudinaryProperties.isConfigured()) {
-            throw new MediaUploadException("Cloudinary is not configured");
+    private void validateVideo(MultipartFile file, String contentType) {
+        validateNotEmpty(file);
+        if (!VIDEO_CONTENT_TYPES.contains(contentType)) {
+            throw new BadRequestException("Unsupported video content type");
+        }
+        if (file.getSize() > MAX_VIDEO_BYTES) {
+            throw new BadRequestException("Video must not exceed 5 GB");
         }
     }
 
-    private Listing getListing(Long listingId) {
-        return listingRepository.findById(listingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Listing not found"));
+    private void validateNotEmpty(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("Media file is required and cannot be empty");
+        }
     }
 
-    private ListingMedia getMedia(Long listingId, Long mediaId) {
-        return mediaRepository.findByIdAndListingId(mediaId, listingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Listing media not found"));
+    private String fileName(MultipartFile file) {
+        String original = file == null ? null : file.getOriginalFilename();
+        if (original == null || original.isBlank()) {
+            throw new BadRequestException("Media file name is required");
+        }
+        String normalized = original.replace('\\', '/');
+        String name = normalized.substring(normalized.lastIndexOf('/') + 1).trim();
+        if (name.isBlank() || name.length() > 255) {
+            throw new BadRequestException("Media file name is invalid");
+        }
+        return name;
+    }
+
+    private String contentType(MultipartFile file, String fileName) {
+        String supplied = file.getContentType();
+        if (supplied != null && !supplied.isBlank() && !"application/octet-stream".equalsIgnoreCase(supplied)) {
+            return supplied.toLowerCase(Locale.ROOT);
+        }
+        int dot = fileName.lastIndexOf('.');
+        String extension = dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
+        String inferred = CONTENT_TYPES_BY_EXTENSION.get(extension);
+        if (inferred == null) {
+            throw new BadRequestException("Could not determine the media content type");
+        }
+        return inferred;
     }
 }

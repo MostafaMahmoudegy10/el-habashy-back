@@ -1,6 +1,10 @@
 package com.example.elhabashyback.listing;
 
 import com.example.elhabashyback.auth.service.JwtTokenService;
+import com.example.elhabashyback.listing.service.ListingVideoUploadWorker;
+import com.example.elhabashyback.media.service.CloudinaryUploadClient;
+import com.example.elhabashyback.media.service.CloudinaryUploadResult;
+import com.example.elhabashyback.media.service.MediaStagingStorage;
 import com.example.elhabashyback.user.entity.Role;
 import com.example.elhabashyback.user.entity.Users;
 import com.example.elhabashyback.user.repoistory.UserRepository;
@@ -12,15 +16,21 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import java.nio.file.Path;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -75,6 +85,15 @@ class ListingControllerIntegrationTests {
 
     @Autowired
     private JwtTokenService jwtTokenService;
+
+    @MockitoBean
+    private CloudinaryUploadClient cloudinaryUploadClient;
+
+    @MockitoBean
+    private MediaStagingStorage stagingStorage;
+
+    @MockitoBean
+    private ListingVideoUploadWorker videoUploadWorker;
 
     private String adminToken;
     private String userToken;
@@ -196,7 +215,7 @@ class ListingControllerIntegrationTests {
     }
 
     @Test
-    void adminCanCreateAndCompleteSignedMediaUploadsAndNormalUsersCannot() throws Exception {
+    void backendUploadsMultipartImagesAndQueuesChunkedVideosForAdminsOnly() throws Exception {
         String listingJson = mockMvc.perform(get("/api/v1/public/listings/new-cairo-private-villa"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -204,143 +223,81 @@ class ListingControllerIntegrationTests {
                 .getContentAsString();
         Number listingId = JsonPath.read(listingJson, "$.id");
 
-        String ticketJson = mockMvc.perform(post("/api/v1/admin/listings/{id}/media/uploads", listingId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "fileName": "gallery.png",
-                                  "contentType": "image/png",
-                                  "bytes": 2048,
-                                  "role": "gallery"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.resourceType").value("image"))
-                .andExpect(jsonPath("$.media.status").value("uploading"))
+        MockMultipartFile image = new MockMultipartFile(
+                "file", "gallery.png", "image/png", new byte[]{1, 2, 3, 4});
+        when(cloudinaryUploadClient.uploadImage(any(), anyString(), eq("image/png")))
+                .thenAnswer(invocation -> new CloudinaryUploadResult(
+                        "https://res.cloudinary.com/test-cloud/image/upload/gallery.png",
+                        invocation.getArgument(1),
+                        "image",
+                        "png",
+                        800,
+                        600,
+                        4,
+                        null,
+                        1719307544L,
+                        "verified-by-client"
+                ));
+
+        String uploadedImageJson = mockMvc.perform(multipart(
+                                "/api/v1/admin/listings/{id}/media/images/gallery", listingId.longValue())
+                        .file(image)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.type").value("image"))
+                .andExpect(jsonPath("$.role").value("gallery"))
+                .andExpect(jsonPath("$.status").value("ready"))
+                .andExpect(jsonPath("$.url").value(
+                        "https://res.cloudinary.com/test-cloud/image/upload/gallery.png"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-
-        Number mediaId = JsonPath.read(ticketJson, "$.media.id");
-        String publicId = JsonPath.read(ticketJson, "$.publicId");
-        long version = 1719307544L;
-        String responseSignature = sha1("public_id=" + publicId + "&version=" + version + "test-api-secret");
-
-        mockMvc.perform(get("/api/v1/public/listings/new-cairo-private-villa"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.images.length()").value(2))
-                .andExpect(jsonPath("$.media.length()").value(2));
-
-        mockMvc.perform(post("/api/v1/admin/listings/{listingId}/media/{mediaId}/complete", listingId.longValue(), mediaId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "secureUrl": "https://res.cloudinary.com/test-cloud/image/upload/v1719307544/gallery.png",
-                                  "publicId": "%s",
-                                  "resourceType": "image",
-                                  "format": "png",
-                                  "width": 800,
-                                  "height": 600,
-                                  "bytes": 2049,
-                                  "version": %d,
-                                  "signature": "%s"
-                                }
-                                """.formatted(publicId, version, responseSignature)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Uploaded media size does not match the upload ticket"));
-
-        mockMvc.perform(post("/api/v1/admin/listings/{listingId}/media/{mediaId}/complete", listingId.longValue(), mediaId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "secureUrl": "https://res.cloudinary.com/test-cloud/image/upload/v1719307544/gallery.png",
-                                  "publicId": "%s",
-                                  "resourceType": "image",
-                                  "format": "png",
-                                  "width": 800,
-                                  "height": 600,
-                                  "bytes": 2048,
-                                  "version": %d,
-                                  "signature": "%s"
-                                }
-                                """.formatted(publicId, version, responseSignature)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ready"))
-                .andExpect(jsonPath("$.type").value("image"));
+        Number imageMediaId = JsonPath.read(uploadedImageJson, "$.id");
 
         mockMvc.perform(get("/api/v1/public/listings/new-cairo-private-villa"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.images.length()").value(3))
                 .andExpect(jsonPath("$.media.length()").value(3));
 
-        String videoTicketJson = mockMvc.perform(post("/api/v1/admin/listings/{id}/media/uploads", listingId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "fileName": "auction-video.mp4",
-                                  "contentType": "video/mp4",
-                                  "bytes": 125829120,
-                                  "role": "video"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.resourceType").value("video"))
-                .andExpect(jsonPath("$.chunkSize").value(6291456))
+        MockMultipartFile video = new MockMultipartFile(
+                "file", "auction-video.mp4", "video/mp4", new byte[]{1, 2, 3, 4, 5});
+        Path stagedVideo = Path.of("build", "test-staged-video.mp4");
+        when(stagingStorage.stage(any(), anyLong())).thenReturn(stagedVideo);
+
+        String queuedVideoJson = mockMvc.perform(multipart(
+                                "/api/v1/admin/listings/{id}/media/videos", listingId.longValue())
+                        .file(video)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type").value("video"))
+                .andExpect(jsonPath("$.role").value("video"))
+                .andExpect(jsonPath("$.status").value("uploading"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+        verify(videoUploadWorker).upload(any());
+        Number videoMediaId = JsonPath.read(queuedVideoJson, "$.id");
 
-        mockMvc.perform(post("/api/v1/admin/listings/{id}/media/uploads", listingId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "fileName": "second-video.mp4",
-                                  "contentType": "video/mp4",
-                                  "bytes": 1024,
-                                  "role": "video"
-                                }
-                                """))
+        mockMvc.perform(get("/api/v1/admin/listings/{listingId}/media/{mediaId}",
+                        listingId.longValue(), videoMediaId.longValue())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("uploading"));
+
+        mockMvc.perform(multipart("/api/v1/admin/listings/{id}/media/videos", listingId.longValue())
+                        .file(video)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
                 .andExpect(status().isConflict());
 
-        Number videoMediaId = JsonPath.read(videoTicketJson, "$.media.id");
-        mockMvc.perform(post("/api/v1/admin/listings/{listingId}/media/{mediaId}/fail", listingId.longValue(), videoMediaId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"Browser upload interrupted\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("failed"));
-
-        mockMvc.perform(post("/api/v1/admin/listings/{id}/media/uploads", listingId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "fileName": "retry-video.mp4",
-                                  "contentType": "video/mp4",
-                                  "bytes": 1024,
-                                  "role": "video"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.media.status").value("uploading"));
-
-        mockMvc.perform(post("/api/v1/admin/listings/{id}/media/uploads", listingId.longValue())
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "fileName": "forbidden.png",
-                                  "contentType": "image/png",
-                                  "bytes": 1024,
-                                  "role": "gallery"
-                                }
-                                """))
+        mockMvc.perform(multipart("/api/v1/admin/listings/{id}/media/images/gallery", listingId.longValue())
+                        .file(image)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + userToken))
                 .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete("/api/v1/admin/listings/{listingId}/media/{mediaId}",
+                        listingId.longValue(), imageMediaId.longValue())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
     }
 
     private Users createUser() {
@@ -354,13 +311,4 @@ class ListingControllerIntegrationTests {
         return userRepository.saveAndFlush(user);
     }
 
-    private static String sha1(String value) {
-        try {
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-1").digest(value.getBytes(StandardCharsets.UTF_8))
-            );
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException(exception);
-        }
-    }
 }

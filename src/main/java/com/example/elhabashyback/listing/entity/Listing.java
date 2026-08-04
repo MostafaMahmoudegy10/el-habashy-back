@@ -195,6 +195,7 @@ public class Listing {
             image.setFileName("seeded-image-" + index);
             image.setContentType("image/remote");
             image.setExpectedBytes(0);
+            image.setUploadedBytes(0);
             image.setMediaUrl(imageUrls.get(index));
             image.setDisplayOrder(index);
             media.add(image);

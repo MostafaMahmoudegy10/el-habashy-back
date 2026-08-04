@@ -38,10 +38,9 @@ Add listings, localized content, specifications, images, SEO fields, dates, stat
 - [x] `PUT /api/v1/admin/listings/{id}`
 - [x] `PATCH /api/v1/admin/listings/{id}/status`
 - [x] `DELETE /api/v1/admin/listings/{id}`
-- [x] `POST /api/v1/admin/listings/{listingId}/media/uploads` issues a one-hour signed Cloudinary upload ticket.
-- [x] Images upload directly as multipart data; videos upload directly in sequential 6 MiB chunks using one upload ID and `Content-Range`.
-- [x] `POST /api/v1/admin/listings/{listingId}/media/{mediaId}/complete` verifies Cloudinary's response signature before publishing media.
-- [x] `POST /api/v1/admin/listings/{listingId}/media/{mediaId}/fail`
+- [x] `POST /api/v1/admin/listings/{listingId}/media/images/{thumbnail|gallery}` accepts one multipart image; the backend uploads it to Cloudinary and persists the verified response.
+- [x] `POST /api/v1/admin/listings/{listingId}/media/videos` accepts one multipart video, stages it, and returns `202` while a dedicated backend worker uploads sequential 6 MiB chunks.
+- [x] `GET /api/v1/admin/listings/{listingId}/media/{mediaId}` returns background video upload status.
 - [x] `DELETE /api/v1/admin/listings/{listingId}/media/{mediaId}`
 - [x] Store thumbnail, gallery images, and video in separate `listing_media` rows linked to the listing, with upload lifecycle state.
 - [x] Add migration, 18 idempotent seed listings, pagination/filtering, validation, and authorization coverage.

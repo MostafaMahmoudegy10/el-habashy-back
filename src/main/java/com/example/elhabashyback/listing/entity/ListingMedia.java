@@ -53,6 +53,9 @@ public class ListingMedia {
     @Column(name = "expected_bytes", nullable = false)
     private long expectedBytes;
 
+    @Column(name = "uploaded_bytes", nullable = false)
+    private long uploadedBytes;
+
     @Column(name = "public_id", unique = true, length = 300)
     private String publicId;
 

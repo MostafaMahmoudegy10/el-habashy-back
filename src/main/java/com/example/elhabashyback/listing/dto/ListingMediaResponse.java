@@ -17,6 +17,9 @@ public record ListingMediaResponse(
         Integer width,
         Integer height,
         Long bytes,
+        long expectedBytes,
+        long uploadedBytes,
+        int progress,
         Double durationSeconds,
         int displayOrder,
         String failureReason
@@ -34,9 +37,22 @@ public record ListingMediaResponse(
                 media.getWidth(),
                 media.getHeight(),
                 media.getActualBytes(),
+                media.getExpectedBytes(),
+                media.getUploadedBytes(),
+                progress(media),
                 media.getDurationSeconds(),
                 media.getDisplayOrder(),
                 media.getFailureReason()
         );
+    }
+
+    private static int progress(ListingMedia media) {
+        if (media.getUploadStatus() == MediaUploadStatus.READY) {
+            return 100;
+        }
+        if (media.getExpectedBytes() <= 0) {
+            return 0;
+        }
+        return (int) Math.min(100, media.getUploadedBytes() * 100 / media.getExpectedBytes());
     }
 }
