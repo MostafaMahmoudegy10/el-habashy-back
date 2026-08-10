@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -133,19 +134,43 @@ class ListingControllerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2))
                 .andExpect(jsonPath("$.content[0].category").value("real-estate"));
+
+        mockMvc.perform(get("/api/v1/public/listings")
+                        .param("q", "private garden"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].slug").value("new-cairo-private-villa"));
     }
 
     @Test
     void publicCanReadAVisibleListingBySlugButNotAnInactiveOne() throws Exception {
-        mockMvc.perform(get("/api/v1/public/listings/new-cairo-private-villa"))
+        String firstResponse = mockMvc.perform(get("/api/v1/public/listings/new-cairo-private-villa"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.slug").value("new-cairo-private-villa"))
                 .andExpect(jsonPath("$.title.ar").isNotEmpty())
                 .andExpect(jsonPath("$.title.en").isNotEmpty())
                 .andExpect(jsonPath("$.images.length()").value(2))
-                .andExpect(jsonPath("$.specs.length()").value(3));
+                .andExpect(jsonPath("$.specs.length()").value(3))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Number firstViews = JsonPath.read(firstResponse, "$.views");
+        Number firstClicks = JsonPath.read(firstResponse, "$.whatsappClicks");
+
+        mockMvc.perform(get("/api/v1/public/listings/new-cairo-private-villa"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.views").value(firstViews.longValue() + 1));
+
+        mockMvc.perform(post("/api/v1/public/listings/new-cairo-private-villa/whatsapp-click"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slug").value("new-cairo-private-villa"))
+                .andExpect(jsonPath("$.whatsappClicks").value(firstClicks.longValue() + 1));
 
         mockMvc.perform(get("/api/v1/public/listings/transport-vehicles"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/v1/public/listings/transport-vehicles/whatsapp-click"))
                 .andExpect(status().isNotFound());
     }
 

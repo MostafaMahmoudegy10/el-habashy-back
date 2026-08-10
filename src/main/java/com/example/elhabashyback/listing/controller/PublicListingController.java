@@ -2,6 +2,7 @@ package com.example.elhabashyback.listing.controller;
 
 import com.example.elhabashyback.common.dto.PageResponse;
 import com.example.elhabashyback.listing.dto.ListingResponse;
+import com.example.elhabashyback.listing.dto.ListingEngagementResponse;
 import com.example.elhabashyback.listing.service.ListingService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -37,5 +39,10 @@ public class PublicListingController {
     @GetMapping("/{slug}")
     ListingResponse getBySlug(@PathVariable String slug) {
         return listingService.getPublicBySlug(slug);
+    }
+
+    @PostMapping("/{slug}/whatsapp-click")
+    ListingEngagementResponse trackWhatsappClick(@PathVariable String slug) {
+        return listingService.trackWhatsappClick(slug);
     }
 }

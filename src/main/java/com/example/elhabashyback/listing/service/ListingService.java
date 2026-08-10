@@ -6,6 +6,7 @@ import com.example.elhabashyback.common.exception.BadRequestException;
 import com.example.elhabashyback.common.exception.ConflictException;
 import com.example.elhabashyback.common.exception.ResourceNotFoundException;
 import com.example.elhabashyback.listing.dto.ListingResponse;
+import com.example.elhabashyback.listing.dto.ListingEngagementResponse;
 import com.example.elhabashyback.listing.dto.ListingSpecificationRequest;
 import com.example.elhabashyback.listing.dto.UpsertListingRequest;
 import com.example.elhabashyback.listing.entity.Listing;
@@ -31,6 +32,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import javax.sql.DataSource;
+import java.sql.SQLException;
 
 @Service
 @RequiredArgsConstructor
@@ -45,9 +48,20 @@ public class ListingService {
             "views", "views",
             "whatsappClicks", "whatsappClicks"
     );
+    private static final Map<String, String> SORT_COLUMNS = Map.of(
+            "createdAt", "created_at",
+            "publishDate", "publish_date",
+            "auctionDate", "auction_date",
+            "titleAr", "title_ar",
+            "titleEn", "title_en",
+            "views", "views",
+            "whatsappClicks", "whatsapp_clicks"
+    );
 
     private final ListingRepository listingRepository;
     private final SectorRepository sectorRepository;
+    private final DataSource dataSource;
+    private volatile Boolean postgresFtsSupported;
 
     @Transactional(readOnly = true)
     public PageResponse<ListingResponse> listPublic(
@@ -75,12 +89,25 @@ public class ListingService {
         return list(category, status, featured, search, false, page, size, sort);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ListingResponse getPublicBySlug(String slug) {
-        Listing listing = listingRepository.findBySlugIgnoreCase(normalizeSlug(slug))
-                .filter(item -> item.getStatus() != ListingStatus.INACTIVE)
-                .orElseThrow(() -> new ResourceNotFoundException("Listing not found"));
+        String normalizedSlug = normalizeSlug(slug);
+        int updated = listingRepository.incrementPublicViews(normalizedSlug, ListingStatus.INACTIVE);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Listing not found");
+        }
+        Listing listing = getPublicListing(normalizedSlug);
         return ListingResponse.fromPublic(listing);
+    }
+
+    @Transactional
+    public ListingEngagementResponse trackWhatsappClick(String slug) {
+        String normalizedSlug = normalizeSlug(slug);
+        int updated = listingRepository.incrementPublicWhatsappClicks(normalizedSlug, ListingStatus.INACTIVE);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Listing not found");
+        }
+        return ListingEngagementResponse.from(getPublicListing(normalizedSlug));
     }
 
     @Transactional
@@ -144,9 +171,20 @@ public class ListingService {
             String sort
     ) {
         ListingStatus status = parseStatus(statusValue);
-        Pageable pageable = PageRequest.of(page, size, parseSort(sort));
-        Page<ListingResponse> result = listingRepository
-                .findAll(filters(category, status, featured, search, publicOnly), pageable)
+        String searchTerm = search == null ? "" : search.trim();
+        boolean useFullTextSearch = !searchTerm.isBlank() && supportsPostgresFts();
+        Pageable pageable = PageRequest.of(page, size, parseSort(sort, useFullTextSearch));
+        Page<Listing> listings = useFullTextSearch
+                ? listingRepository.searchFullText(
+                        normalizedCategory(category),
+                        status == null ? "" : status.name(),
+                        featured,
+                        publicOnly,
+                        searchTerm,
+                        pageable
+                )
+                : listingRepository.findAll(filters(category, status, featured, searchTerm, publicOnly), pageable);
+        Page<ListingResponse> result = listings
                 .map(listing -> publicOnly
                         ? ListingResponse.fromPublic(listing)
                         : ListingResponse.fromAdmin(listing));
@@ -192,10 +230,10 @@ public class ListingService {
         };
     }
 
-    private Sort parseSort(String sortValue) {
+    private Sort parseSort(String sortValue, boolean nativeColumns) {
         String value = sortValue == null || sortValue.isBlank() ? "createdAt,desc" : sortValue.trim();
         String[] parts = value.split(",", 2);
-        String field = SORT_FIELDS.get(parts[0]);
+        String field = (nativeColumns ? SORT_COLUMNS : SORT_FIELDS).get(parts[0]);
         if (field == null) {
             throw new BadRequestException("Unsupported listing sort field");
         }
@@ -204,6 +242,29 @@ public class ListingService {
                 : Sort.Direction.fromOptionalString(parts[1]).orElseThrow(
                         () -> new BadRequestException("Sort direction must be asc or desc"));
         return Sort.by(direction, field);
+    }
+
+    private String normalizedCategory(String category) {
+        return category == null || category.isBlank()
+                ? ""
+                : category.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean supportsPostgresFts() {
+        Boolean cached = postgresFtsSupported;
+        if (cached != null) {
+            return cached;
+        }
+        try (var connection = dataSource.getConnection()) {
+            boolean supported = connection.getMetaData().getDatabaseProductName()
+                    .toLowerCase(Locale.ROOT)
+                    .contains("postgresql");
+            postgresFtsSupported = supported;
+            return supported;
+        } catch (SQLException exception) {
+            postgresFtsSupported = false;
+            return false;
+        }
     }
 
     private ListingStatus parseStatus(String status) {
@@ -278,6 +339,12 @@ public class ListingService {
 
     private Listing get(Long id) {
         return listingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Listing not found"));
+    }
+
+    private Listing getPublicListing(String normalizedSlug) {
+        return listingRepository.findBySlugIgnoreCase(normalizedSlug)
+                .filter(item -> item.getStatus() != ListingStatus.INACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Listing not found"));
     }
 
