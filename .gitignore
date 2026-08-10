@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Temporary media files used while proxying uploads to Cloudinary.
+/data/
