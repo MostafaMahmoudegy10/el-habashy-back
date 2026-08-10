@@ -99,6 +99,8 @@ class AuthControllerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(cookie().httpOnly("elhabashy_refresh", true))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.expiresIn").isNumber())
+                .andExpect(jsonPath("$.expiresAt").isNotEmpty())
                 .andExpect(jsonPath("$.user.email").value("mostafa@example.com"))
                 .andReturn();
 
@@ -118,7 +120,8 @@ class AuthControllerIntegrationTests {
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshCookie))
                 .andExpect(status().isOk())
                 .andExpect(cookie().httpOnly("elhabashy_refresh", true))
-                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.expiresAt").isNotEmpty());
 
         var user = userRepository.findByEmailIgnoreCase("mostafa@example.com").orElseThrow();
         user.setRole(Role.ADMIN);

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -14,7 +15,6 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,12 +36,18 @@ public class CloudinaryUploadClient {
     private final CloudinaryProperties properties;
     private final CloudinarySignatureService signatureService;
 
-    public CloudinaryUploadResult uploadImage(MultipartFile file, String publicId, String contentType) {
+    public CloudinaryUploadResult uploadImage(
+            Path stagedFile,
+            String fileName,
+            String publicId,
+            String contentType,
+            long expectedBytes
+    ) {
         ensureConfigured();
         MultiValueMap<String, Object> parts = signedParts(publicId, Instant.now().getEpochSecond());
-        parts.add("file", filePart(file, contentType));
+        parts.add("file", filePart(stagedFile, fileName, contentType));
         CloudinaryResponse response = send("image", parts, new HttpHeaders());
-        return validateFinalResponse(response, publicId, "image", file.getSize());
+        return validateFinalResponse(response, publicId, "image", expectedBytes);
     }
 
     public CloudinaryUploadResult uploadVideo(
@@ -93,10 +99,16 @@ public class CloudinaryUploadClient {
         return parts;
     }
 
-    private HttpEntity<?> filePart(MultipartFile file, String contentType) {
+    private HttpEntity<?> filePart(Path file, String fileName, String contentType) {
+        FileSystemResource resource = new FileSystemResource(file) {
+            @Override
+            public String getFilename() {
+                return fileName;
+            }
+        };
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(contentType));
-        return new HttpEntity<>(file.getResource(), headers);
+        return new HttpEntity<>(resource, headers);
     }
 
     private HttpEntity<?> bytePart(byte[] bytes, String fileName, String contentType) {

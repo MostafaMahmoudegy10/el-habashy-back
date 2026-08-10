@@ -34,7 +34,12 @@ Add listings, localized content, specifications, images, SEO fields, dates, stat
 - [x] `GET /api/v1/public/listings`
 - [x] `GET /api/v1/public/listings/{slug}`
 - [x] `GET /api/v1/admin/listings`
-- [x] `POST /api/v1/admin/listings`
+- [x] `POST /api/v1/admin/listings` accepts one `multipart/form-data` submission with:
+  - `listing`: the JSON listing payload, including only the specifications relevant to its sector.
+  - `thumbnail`: the required main image.
+  - `gallery`: zero to twenty gallery images.
+  - `video`: one optional video.
+  - Returns `202 Accepted` after the listing and upload-state rows are committed. Dedicated media workers upload staged files to Cloudinary, then persist the verified `publicId`, secure URL, metadata, and final status.
 - [x] `PUT /api/v1/admin/listings/{id}`
 - [x] `PATCH /api/v1/admin/listings/{id}/status`
 - [x] `DELETE /api/v1/admin/listings/{id}`
@@ -44,6 +49,7 @@ Add listings, localized content, specifications, images, SEO fields, dates, stat
 - [x] `DELETE /api/v1/admin/listings/{listingId}/media/{mediaId}`
 - [x] Store thumbnail, gallery images, and video in separate `listing_media` rows linked to the listing, with upload lifecycle state.
 - [x] Add migration, 18 idempotent seed listings, pagination/filtering, validation, and authorization coverage.
+- [x] `featured=true` means the public listing is eligible for the home-page hero and featured carousel; clients can query it with `GET /api/v1/public/listings?featured=true`.
 
 The frontend connection remains pending until the API is approved in Postman.
 

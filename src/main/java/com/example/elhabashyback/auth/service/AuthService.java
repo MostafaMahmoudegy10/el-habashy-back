@@ -100,6 +100,7 @@ public class AuthService {
                 accessToken.value(),
                 "Bearer",
                 expiresIn,
+                accessToken.expiresAt(),
                 UserResponse.from(user)
         );
         return new AuthSession(response, refreshToken.value());

@@ -52,14 +52,15 @@ public class ListingMediaStateService {
         media.setContentType(contentType);
         media.setExpectedBytes(bytes);
         media.setUploadedBytes(0);
-        media.setPublicId(buildPublicId(listingId));
         media.setDisplayOrder(mediaRepository.findMaximumDisplayOrder(listingId) + 1);
+        listing.addMedia(media);
         mediaRepository.saveAndFlush(media);
+        String publicId = buildPublicId(listingId);
         return new PendingListingMedia(
                 listingId,
                 media.getId(),
                 mediaType,
-                media.getPublicId(),
+                publicId,
                 fileName,
                 contentType,
                 bytes,
@@ -93,6 +94,7 @@ public class ListingMediaStateService {
     ) {
         ListingMedia media = getEntity(listingId, mediaId);
         media.setUploadStatus(MediaUploadStatus.READY);
+        media.setPublicId(result.publicId());
         media.setMediaUrl(result.secureUrl());
         media.setFormat(result.format());
         media.setWidth(result.width());

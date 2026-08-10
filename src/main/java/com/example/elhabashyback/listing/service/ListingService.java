@@ -85,6 +85,10 @@ public class ListingService {
 
     @Transactional
     public ListingResponse create(UpsertListingRequest request) {
+        return ListingResponse.fromAdmin(createEntity(request));
+    }
+
+    Listing createEntity(UpsertListingRequest request) {
         validateDates(request.publishDate(), request.expireDate());
         String slug = resolveSlug(request.slug(), request.title().en());
         if (listingRepository.existsBySlugIgnoreCase(slug)) {
@@ -96,7 +100,7 @@ public class ListingService {
         listing.setViews(0);
         listing.setWhatsappClicks(0);
         apply(listing, request);
-        return ListingResponse.fromAdmin(listingRepository.saveAndFlush(listing));
+        return listingRepository.saveAndFlush(listing);
     }
 
     @Transactional

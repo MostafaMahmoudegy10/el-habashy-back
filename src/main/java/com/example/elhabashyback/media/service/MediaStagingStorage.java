@@ -21,9 +21,10 @@ public class MediaStagingStorage {
     }
 
     public Path stage(MultipartFile file, Long mediaId) {
+        Path target = null;
         try {
             Files.createDirectories(root);
-            Path target = root.resolve(mediaId + "-" + UUID.randomUUID() + extension(file.getOriginalFilename()))
+            target = root.resolve(mediaId + "-" + UUID.randomUUID() + extension(file.getOriginalFilename()))
                     .normalize();
             requireInsideRoot(target);
             try (var input = file.getInputStream()) {
@@ -31,7 +32,14 @@ public class MediaStagingStorage {
             }
             return target;
         } catch (IOException exception) {
-            throw new MediaUploadException("Could not stage the video for background upload", exception);
+            if (target != null) {
+                try {
+                    Files.deleteIfExists(target);
+                } catch (IOException ignored) {
+                    // The staging exception remains the primary failure.
+                }
+            }
+            throw new MediaUploadException("Could not stage the media file for background upload", exception);
         }
     }
 

@@ -6,13 +6,14 @@ import com.example.elhabashyback.listing.entity.MediaRole;
 import com.example.elhabashyback.listing.entity.MediaType;
 import com.example.elhabashyback.media.exception.MediaUploadException;
 import com.example.elhabashyback.media.service.CloudinaryUploadClient;
-import com.example.elhabashyback.media.service.CloudinaryUploadResult;
 import com.example.elhabashyback.media.service.MediaStagingStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -21,6 +22,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ListingMediaService {
 
+    private static final int MAX_GALLERY_IMAGES = 20;
     private static final long MAX_IMAGE_BYTES = 20L * 1024L * 1024L;
     private static final long MAX_VIDEO_BYTES = 5L * 1024L * 1024L * 1024L;
     private static final Set<String> IMAGE_CONTENT_TYPES = Set.of(
@@ -44,23 +46,57 @@ public class ListingMediaService {
     private final CloudinaryUploadClient cloudinaryUploadClient;
     private final ListingMediaStateService stateService;
     private final MediaStagingStorage stagingStorage;
-    private final ListingVideoUploadWorker videoUploadWorker;
+    private final ListingMediaUploadWorker uploadWorker;
 
-    public ListingMediaResponse uploadImage(Long listingId, MultipartFile file, MediaRole role) {
+    public void validateSubmission(
+            MultipartFile thumbnail,
+            List<MultipartFile> gallery,
+            MultipartFile video
+    ) {
+        cloudinaryUploadClient.ensureConfigured();
+        validateImage(thumbnail, contentType(thumbnail, fileName(thumbnail)), MediaRole.THUMBNAIL);
+
+        List<MultipartFile> galleryFiles = gallery == null ? List.of() : gallery;
+        if (galleryFiles.size() > MAX_GALLERY_IMAGES) {
+            throw new BadRequestException("A listing can contain at most 20 gallery images");
+        }
+        galleryFiles.forEach(file ->
+                validateImage(file, contentType(file, fileName(file)), MediaRole.GALLERY));
+
+        if (video != null && !video.isEmpty()) {
+            validateVideo(video, contentType(video, fileName(video)));
+        }
+    }
+
+    public List<MediaUploadJob> prepareSubmission(
+            Long listingId,
+            MultipartFile thumbnail,
+            List<MultipartFile> gallery,
+            MultipartFile video
+    ) {
+        validateSubmission(thumbnail, gallery, video);
+        List<MediaUploadJob> jobs = new ArrayList<>();
+        try {
+            jobs.add(prepare(listingId, thumbnail, MediaType.IMAGE, MediaRole.THUMBNAIL).job());
+            for (MultipartFile image : gallery == null ? List.<MultipartFile>of() : gallery) {
+                jobs.add(prepare(listingId, image, MediaType.IMAGE, MediaRole.GALLERY).job());
+            }
+            if (video != null && !video.isEmpty()) {
+                jobs.add(prepare(listingId, video, MediaType.VIDEO, MediaRole.VIDEO).job());
+            }
+            return List.copyOf(jobs);
+        } catch (RuntimeException exception) {
+            cleanup(jobs);
+            throw exception;
+        }
+    }
+
+    public ListingMediaResponse acceptImage(Long listingId, MultipartFile file, MediaRole role) {
         cloudinaryUploadClient.ensureConfigured();
         String fileName = fileName(file);
         String contentType = contentType(file, fileName);
         validateImage(file, contentType, role);
-        PendingListingMedia pending = stateService.createPending(
-                listingId, MediaType.IMAGE, role, fileName, contentType, file.getSize());
-        try {
-            CloudinaryUploadResult result = cloudinaryUploadClient.uploadImage(
-                    file, pending.publicId(), contentType);
-            return stateService.markReady(listingId, pending.mediaId(), result);
-        } catch (RuntimeException exception) {
-            stateService.markFailed(listingId, pending.mediaId(), exception.getMessage());
-            throw exception;
-        }
+        return acceptSingle(listingId, file, MediaType.IMAGE, role);
     }
 
     public ListingMediaResponse acceptVideo(Long listingId, MultipartFile file) {
@@ -68,36 +104,32 @@ public class ListingMediaService {
         String fileName = fileName(file);
         String contentType = contentType(file, fileName);
         validateVideo(file, contentType);
-        PendingListingMedia pending = stateService.createPending(
-                listingId, MediaType.VIDEO, MediaRole.VIDEO, fileName, contentType, file.getSize());
-        Path stagedFile;
-        try {
-            stagedFile = stagingStorage.stage(file, pending.mediaId());
-        } catch (RuntimeException exception) {
-            stateService.markFailed(listingId, pending.mediaId(), exception.getMessage());
-            throw exception;
-        }
+        return acceptSingle(listingId, file, MediaType.VIDEO, MediaRole.VIDEO);
+    }
 
-        VideoUploadJob job = new VideoUploadJob(
-                listingId,
-                pending.mediaId(),
-                pending.publicId(),
-                fileName,
-                contentType,
-                file.getSize(),
-                stagedFile
-        );
-        try {
-            videoUploadWorker.upload(job);
-        } catch (RuntimeException exception) {
+    public void dispatch(List<MediaUploadJob> jobs) {
+        jobs.forEach(job -> {
             try {
-                stagingStorage.delete(stagedFile);
-            } finally {
-                stateService.markFailed(listingId, pending.mediaId(), "Video upload queue is unavailable");
+                uploadWorker.upload(job);
+            } catch (RuntimeException exception) {
+                cleanup(List.of(job));
+                try {
+                    stateService.markFailed(job.listingId(), job.mediaId(), "Media upload queue is unavailable");
+                } catch (RuntimeException ignored) {
+                    // The queue failure is already reflected by cleanup and logging at the caller boundary.
+                }
             }
-            throw new MediaUploadException("Video upload queue is unavailable", exception);
-        }
-        return pending.response();
+        });
+    }
+
+    public void cleanup(List<MediaUploadJob> jobs) {
+        jobs.forEach(job -> {
+            try {
+                stagingStorage.delete(job.stagedFile());
+            } catch (RuntimeException ignored) {
+                // Best-effort cleanup must not hide the original submission failure.
+            }
+        });
     }
 
     public ListingMediaResponse get(Long listingId, Long mediaId) {
@@ -106,6 +138,47 @@ public class ListingMediaService {
 
     public void delete(Long listingId, Long mediaId) {
         stateService.delete(listingId, mediaId);
+    }
+
+    private ListingMediaResponse acceptSingle(
+            Long listingId,
+            MultipartFile file,
+            MediaType mediaType,
+            MediaRole role
+    ) {
+        PreparedMedia prepared = prepare(listingId, file, mediaType, role);
+        try {
+            uploadWorker.upload(prepared.job());
+            return prepared.response();
+        } catch (RuntimeException exception) {
+            cleanup(List.of(prepared.job()));
+            stateService.markFailed(listingId, prepared.job().mediaId(), "Media upload queue is unavailable");
+            throw new MediaUploadException("Media upload queue is unavailable", exception);
+        }
+    }
+
+    private PreparedMedia prepare(
+            Long listingId,
+            MultipartFile file,
+            MediaType mediaType,
+            MediaRole role
+    ) {
+        String fileName = fileName(file);
+        String contentType = contentType(file, fileName);
+        PendingListingMedia pending = stateService.createPending(
+                listingId, mediaType, role, fileName, contentType, file.getSize());
+        Path stagedFile = stagingStorage.stage(file, pending.mediaId());
+        MediaUploadJob job = new MediaUploadJob(
+                listingId,
+                pending.mediaId(),
+                mediaType,
+                pending.publicId(),
+                fileName,
+                contentType,
+                file.getSize(),
+                stagedFile
+        );
+        return new PreparedMedia(job, pending.response());
     }
 
     private void validateImage(MultipartFile file, String contentType, MediaRole role) {
@@ -162,5 +235,8 @@ public class ListingMediaService {
             throw new BadRequestException("Could not determine the media content type");
         }
         return inferred;
+    }
+
+    private record PreparedMedia(MediaUploadJob job, ListingMediaResponse response) {
     }
 }

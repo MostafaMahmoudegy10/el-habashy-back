@@ -202,6 +202,11 @@ public class Listing {
         }
     }
 
+    public void addMedia(ListingMedia item) {
+        item.setListing(this);
+        media.add(item);
+    }
+
     public void replaceSpecifications(List<ListingSpecification> replacements) {
         specifications.clear();
         for (int index = 0; index < replacements.size(); index++) {

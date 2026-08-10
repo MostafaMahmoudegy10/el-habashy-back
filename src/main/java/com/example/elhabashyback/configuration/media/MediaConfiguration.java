@@ -20,10 +20,12 @@ public class MediaConfiguration {
     @Bean(name = "mediaUploadExecutor")
     ThreadPoolTaskExecutor mediaUploadExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(2);
-        executor.setQueueCapacity(20);
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("media-upload-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
         return executor;
     }
 }

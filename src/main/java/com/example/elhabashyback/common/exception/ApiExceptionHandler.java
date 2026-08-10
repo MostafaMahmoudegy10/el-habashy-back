@@ -9,6 +9,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -76,6 +77,13 @@ public class ApiExceptionHandler {
         ProblemDetail problem = problem(HttpStatus.CONTENT_TOO_LARGE, "Media file exceeds the allowed size");
         problem.setProperty("errorCode", "MEDIA_TOO_LARGE");
         return problem;
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    ProblemDetail missingMultipartPart(MissingServletRequestPartException exception) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "Required multipart part is missing: " + exception.getRequestPartName());
     }
 
     private ProblemDetail problem(HttpStatus status, String detail) {

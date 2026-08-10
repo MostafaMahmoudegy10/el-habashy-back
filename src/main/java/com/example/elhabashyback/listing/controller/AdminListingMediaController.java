@@ -32,8 +32,10 @@ public class AdminListingMediaController {
             @RequestPart("file") MultipartFile file
     ) {
         MediaRole mediaRole = parseImageRole(role);
-        ListingMediaResponse response = mediaService.uploadImage(listingId, file, mediaRole);
-        return ResponseEntity.created(mediaLocation(listingId, response.id())).body(response);
+        ListingMediaResponse response = mediaService.acceptImage(listingId, file, mediaRole);
+        return ResponseEntity.accepted()
+                .location(mediaLocation(listingId, response.id()))
+                .body(response);
     }
 
     @PostMapping(value = "/videos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

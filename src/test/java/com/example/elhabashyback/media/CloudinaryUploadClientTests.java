@@ -9,7 +9,6 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
@@ -112,10 +111,11 @@ class CloudinaryUploadClientTests {
                 "test-cloud", "test-api-key", API_SECRET, "test/listings", baseUrl);
         CloudinaryUploadClient client = new CloudinaryUploadClient(
                 RestClient.create(), properties, new CloudinarySignatureService(properties));
-        MockMultipartFile image = new MockMultipartFile(
-                "file", "thumbnail.png", "image/png", new byte[]{1, 2, 3, 4});
+        Path image = tempDir.resolve("thumbnail.png");
+        Files.write(image, new byte[]{1, 2, 3, 4});
 
-        CloudinaryUploadResult result = client.uploadImage(image, PUBLIC_ID, "image/png");
+        CloudinaryUploadResult result = client.uploadImage(
+                image, "thumbnail.png", PUBLIC_ID, "image/png", 4);
 
         assertThat(requestBodies).singleElement().satisfies(body -> {
             assertThat(body).contains("name=\"file\"", "filename=\"thumbnail.png\"");

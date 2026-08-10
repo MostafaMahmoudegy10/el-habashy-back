@@ -5,11 +5,13 @@ import com.example.elhabashyback.listing.dto.ListingResponse;
 import com.example.elhabashyback.listing.dto.UpdateListingStatusRequest;
 import com.example.elhabashyback.listing.dto.UpsertListingRequest;
 import com.example.elhabashyback.listing.service.ListingService;
+import com.example.elhabashyback.listing.service.ListingSubmissionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,9 +22,12 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/listings")
@@ -31,6 +36,7 @@ import java.net.URI;
 public class AdminListingController {
 
     private final ListingService listingService;
+    private final ListingSubmissionService submissionService;
 
     @GetMapping
     PageResponse<ListingResponse> list(
@@ -45,10 +51,22 @@ public class AdminListingController {
         return listingService.listAdmin(category, status, featured, search, page, size, sort);
     }
 
-    @PostMapping
-    ResponseEntity<ListingResponse> create(@Valid @RequestBody UpsertListingRequest request) {
-        ListingResponse response = listingService.create(request);
-        return ResponseEntity.created(URI.create("/api/v1/public/listings/" + response.slug())).body(response);
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    ResponseEntity<ListingResponse> create(
+            @Valid @RequestPart("listing") UpsertListingRequest request,
+            @RequestPart("thumbnail") MultipartFile thumbnail,
+            @RequestPart(name = "gallery", required = false) List<MultipartFile> gallery,
+            @RequestPart(name = "video", required = false) MultipartFile video
+    ) {
+        ListingResponse response = submissionService.submit(
+                request,
+                thumbnail,
+                gallery == null ? List.of() : gallery,
+                video
+        );
+        return ResponseEntity.accepted()
+                .location(URI.create("/api/v1/public/listings/" + response.slug()))
+                .body(response);
     }
 
     @PutMapping("/{id}")
