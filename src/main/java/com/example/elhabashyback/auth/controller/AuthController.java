@@ -54,17 +54,27 @@ public class AuthController {
     ResponseEntity<String> activate(@RequestParam String token) {
         accountVerificationService.activate(token);
         String frontendUrl = org.springframework.web.util.HtmlUtils.htmlEscape(mailProperties.frontendBaseUrl());
+        String logoUrl = org.springframework.web.util.HtmlUtils.htmlEscape(
+                org.springframework.web.util.UriComponentsBuilder.fromUriString(mailProperties.backendPublicUrl())
+                        .path("/brand/el-habashy-logo.png")
+                        .build()
+                        .toUriString()
+        );
         String html = """
                 <!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
                 <body style="margin:0;background:#f1f5f9;font-family:Tahoma,Arial,sans-serif;display:grid;min-height:100vh;place-items:center">
                   <main style="max-width:520px;margin:20px;background:#fff;border-radius:28px;padding:38px;text-align:center;box-shadow:0 20px 60px rgba(15,23,42,.12)">
-                    <div style="color:#d97706;font-weight:900">EL HABASHY</div>
+                    <img src="{{LOGO}}" width="112" height="112" alt="شعار الحبشي" style="display:block;width:112px;height:112px;object-fit:contain;margin:0 auto 14px">
+                    <div style="color:#020617;font-size:24px;font-weight:900">الحبشي</div>
+                    <div style="color:#b45309;font-size:13px;font-weight:900;margin-top:4px">الخبراء المثمنين للخبرة والتثمين</div>
                     <h1 style="color:#020617;font-size:30px">تم تفعيل حسابك بنجاح</h1>
                     <p style="color:#64748b;line-height:1.9">يمكنك الآن تسجيل الدخول ومتابعة العروض والمزادات.</p>
                     <a href="{{FRONTEND}}" style="display:inline-block;margin-top:16px;background:#fbbf24;color:#0f172a;text-decoration:none;font-weight:900;padding:14px 28px;border-radius:999px">الذهاب لتسجيل الدخول</a>
                   </main>
                 </body></html>
-                """.replace("{{FRONTEND}}", frontendUrl);
+                """
+                .replace("{{FRONTEND}}", frontendUrl)
+                .replace("{{LOGO}}", logoUrl);
         return ResponseEntity.ok(html);
     }
 

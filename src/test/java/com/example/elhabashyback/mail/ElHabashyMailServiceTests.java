@@ -9,6 +9,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 
 import java.time.Duration;
 import java.util.Properties;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -45,5 +47,12 @@ class ElHabashyMailServiceTests {
 
         verify(mailSender).send(message);
         assertThat(message.isMimeType("multipart/*")).isTrue();
+
+        ByteArrayOutputStream rawMessage = new ByteArrayOutputStream();
+        message.writeTo(rawMessage);
+        String source = rawMessage.toString(StandardCharsets.ISO_8859_1);
+        assertThat(source).contains("Content-ID: <el-habashy-logo>");
+        assertThat(new EmailTemplateService().activation("Mostafa", "https://elhabashy.com/activate"))
+                .contains("cid:el-habashy-logo", "الخبراء المثمنين للخبرة والتثمين");
     }
 }

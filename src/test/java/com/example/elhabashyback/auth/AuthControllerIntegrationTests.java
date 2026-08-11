@@ -89,7 +89,11 @@ class AuthControllerIntegrationTests {
         ArgumentCaptor<String> activationToken = ArgumentCaptor.forClass(String.class);
         verify(mailService).sendActivationEmail(any(), activationToken.capture());
         mockMvc.perform(get("/api/v1/auth/activate").param("token", activationToken.getValue()))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .string(org.hamcrest.Matchers.containsString("الخبراء المثمنين للخبرة والتثمين")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .string(org.hamcrest.Matchers.containsString("/brand/el-habashy-logo.png")));
 
         var loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -245,6 +249,11 @@ class AuthControllerIntegrationTests {
 
     @Test
     void publicEndpointsIgnoreInvalidBearerAndProtectedEndpointsReturnProblemJson() throws Exception {
+        mockMvc.perform(get("/brand/el-habashy-logo.png"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .contentType(MediaType.IMAGE_PNG));
+
         mockMvc.perform(post("/api/v1/auth/register")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer null")
                         .contentType(MediaType.APPLICATION_JSON)
