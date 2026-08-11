@@ -6,6 +6,8 @@ import org.springframework.web.util.HtmlUtils;
 @Service
 public class EmailTemplateService {
 
+    static final String LOGO_CONTENT_ID = "el-habashy-logo";
+
     public String activation(String firstName, String activationUrl) {
         String safeName = HtmlUtils.htmlEscape(firstName);
         String safeUrl = HtmlUtils.htmlEscape(activationUrl);
@@ -45,9 +47,18 @@ public class EmailTemplateService {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:28px 12px">
                     <tr><td align="center">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;box-shadow:0 18px 50px rgba(15,23,42,.10)">
-                        <tr><td style="background:#020617;padding:28px 32px;text-align:right">
-                          <div style="color:#fbbf24;font-size:13px;font-weight:900;letter-spacing:1px">EL HABASHY</div>
-                          <div style="color:#ffffff;font-size:22px;font-weight:900;margin-top:5px">الحبشي للمزادات والتثمين</div>
+                        <tr><td style="background:#020617;padding:24px 32px;text-align:right">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                            <tr>
+                              <td width="88" valign="middle" style="padding-left:16px">
+                                <img src="cid:{{LOGO_CID}}" width="76" height="76" alt="شعار الحبشي" style="display:block;width:76px;height:76px;object-fit:contain;border:0">
+                              </td>
+                              <td valign="middle" style="text-align:right">
+                                <div style="color:#ffffff;font-size:24px;font-weight:900;line-height:1.35">الحبشي</div>
+                                <div style="color:#fbbf24;font-size:13px;font-weight:900;line-height:1.7;margin-top:3px">الخبراء المثمنين للخبرة والتثمين</div>
+                              </td>
+                            </tr>
+                          </table>
                         </td></tr>
                         <tr><td style="padding:34px 32px;text-align:right">
                           <div style="display:inline-block;background:#fef3c7;color:#92400e;font-size:12px;font-weight:900;padding:7px 12px;border-radius:999px">حسابك بأمان</div>
@@ -55,7 +66,7 @@ public class EmailTemplateService {
                           {{CONTENT}}
                         </td></tr>
                         <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 32px;text-align:center;color:#64748b;font-size:12px;line-height:1.8">
-                          شركة الحبشي للمزادات والتثمين<br>22 شارع محمود بسيوني، قصر النيل، القاهرة
+                          الحبشي<br>الخبراء المثمنين للخبرة والتثمين<br>22 شارع محمود بسيوني، قصر النيل، القاهرة
                         </td></tr>
                       </table>
                     </td></tr>
@@ -65,6 +76,7 @@ public class EmailTemplateService {
                 """
                 .replace("{{PREHEADER}}", HtmlUtils.htmlEscape(preheader))
                 .replace("{{TITLE}}", HtmlUtils.htmlEscape(title))
+                .replace("{{LOGO_CID}}", LOGO_CONTENT_ID)
                 .replace("{{CONTENT}}", content);
     }
 }

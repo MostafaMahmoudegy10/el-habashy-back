@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.mail.MailPreparationException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -16,6 +17,8 @@ import java.nio.charset.StandardCharsets;
 @Service
 @RequiredArgsConstructor
 public class ElHabashyMailService {
+
+    private static final String LOGO_CLASSPATH = "static/brand/el-habashy-logo.png";
 
     private final JavaMailSender mailSender;
     private final EmailTemplateService templates;
@@ -52,6 +55,11 @@ public class ElHabashyMailService {
             helper.setTo(recipient);
             helper.setSubject(subject);
             helper.setText(plainText, html);
+            helper.addInline(
+                    EmailTemplateService.LOGO_CONTENT_ID,
+                    new ClassPathResource(LOGO_CLASSPATH),
+                    "image/png"
+            );
         } catch (MessagingException | IllegalStateException exception) {
             throw new MailPreparationException("Could not prepare email message", exception);
         }
