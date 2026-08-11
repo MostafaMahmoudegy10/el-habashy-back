@@ -1,9 +1,11 @@
 package com.example.elhabashyback.listing.service;
 
 import com.example.elhabashyback.listing.dto.ListingResponse;
+import com.example.elhabashyback.configuration.cache.CacheConfiguration;
 import com.example.elhabashyback.listing.dto.UpsertListingRequest;
 import com.example.elhabashyback.listing.entity.Listing;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -20,6 +22,7 @@ public class ListingSubmissionService {
     private final ListingMediaService mediaService;
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public ListingResponse submit(
             UpsertListingRequest request,
             MultipartFile thumbnail,

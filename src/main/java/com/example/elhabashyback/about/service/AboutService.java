@@ -27,7 +27,10 @@ import com.example.elhabashyback.about.repository.AboutWorkCategoryRepository;
 import com.example.elhabashyback.about.repository.AboutWorkEntryRepository;
 import com.example.elhabashyback.common.dto.LocalizedTextRequest;
 import com.example.elhabashyback.common.exception.ResourceNotFoundException;
+import com.example.elhabashyback.configuration.cache.CacheConfiguration;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +52,7 @@ public class AboutService {
     private final AboutWorkEntryRepository workEntryRepository;
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = CacheConfiguration.PUBLIC_ABOUT, sync = true)
     public AboutResponse getPublicContent() {
         return aggregate(false);
     }
@@ -59,6 +63,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutProfileResponse updateProfile(UpdateAboutProfileRequest request) {
         AboutProfile profile = profileRepository.findById(PROFILE_ID).orElseGet(this::defaultProfile);
         applyProfile(profile, request);
@@ -66,6 +71,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutPersonResponse createPerson(UpsertAboutPersonRequest request) {
         AboutPerson person = new AboutPerson();
         applyPerson(person, request);
@@ -73,6 +79,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutPersonResponse updatePerson(Long id, UpsertAboutPersonRequest request) {
         AboutPerson person = personRepository.findById(id)
                 .orElseThrow(() -> notFound("Organizational person", id));
@@ -81,6 +88,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public void deletePerson(Long id) {
         AboutPerson person = personRepository.findById(id)
                 .orElseThrow(() -> notFound("Organizational person", id));
@@ -88,6 +96,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutDepartmentResponse createDepartment(UpsertAboutDepartmentRequest request) {
         AboutDepartment department = new AboutDepartment();
         applyDepartment(department, request);
@@ -95,6 +104,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutDepartmentResponse updateDepartment(Long id, UpsertAboutDepartmentRequest request) {
         AboutDepartment department = departmentRepository.findById(id)
                 .orElseThrow(() -> notFound("Department", id));
@@ -103,6 +113,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public void deleteDepartment(Long id) {
         AboutDepartment department = departmentRepository.findById(id)
                 .orElseThrow(() -> notFound("Department", id));
@@ -110,6 +121,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutCertificateResponse createCertificate(UpsertAboutCertificateRequest request) {
         AboutCertificate certificate = new AboutCertificate();
         applyCertificate(certificate, request);
@@ -117,6 +129,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutCertificateResponse updateCertificate(Long id, UpsertAboutCertificateRequest request) {
         AboutCertificate certificate = certificateRepository.findById(id)
                 .orElseThrow(() -> notFound("Certificate", id));
@@ -125,6 +138,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public void deleteCertificate(Long id) {
         AboutCertificate certificate = certificateRepository.findById(id)
                 .orElseThrow(() -> notFound("Certificate", id));
@@ -132,6 +146,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutWorkCategoryResponse createWorkCategory(UpsertAboutWorkCategoryRequest request) {
         AboutWorkCategory category = new AboutWorkCategory();
         applyWorkCategory(category, request);
@@ -140,6 +155,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutWorkCategoryResponse updateWorkCategory(Long id, UpsertAboutWorkCategoryRequest request) {
         AboutWorkCategory category = workCategoryRepository.findById(id)
                 .orElseThrow(() -> notFound("Previous-work category", id));
@@ -152,6 +168,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public void deleteWorkCategory(Long id) {
         AboutWorkCategory category = workCategoryRepository.findById(id)
                 .orElseThrow(() -> notFound("Previous-work category", id));
@@ -161,6 +178,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutWorkEntryResponse createWorkEntry(Long categoryId, UpsertAboutWorkEntryRequest request) {
         AboutWorkCategory category = workCategoryRepository.findById(categoryId)
                 .orElseThrow(() -> notFound("Previous-work category", categoryId));
@@ -171,6 +189,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public AboutWorkEntryResponse updateWorkEntry(Long id, UpsertAboutWorkEntryRequest request) {
         AboutWorkEntry entry = workEntryRepository.findById(id)
                 .orElseThrow(() -> notFound("Previous-work entry", id));
@@ -179,6 +198,7 @@ public class AboutService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_ABOUT, allEntries = true)
     public void deleteWorkEntry(Long id) {
         AboutWorkEntry entry = workEntryRepository.findById(id)
                 .orElseThrow(() -> notFound("Previous-work entry", id));

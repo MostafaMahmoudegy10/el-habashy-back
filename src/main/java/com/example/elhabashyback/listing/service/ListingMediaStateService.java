@@ -2,6 +2,7 @@ package com.example.elhabashyback.listing.service;
 
 import com.example.elhabashyback.common.exception.ConflictException;
 import com.example.elhabashyback.common.exception.ResourceNotFoundException;
+import com.example.elhabashyback.configuration.cache.CacheConfiguration;
 import com.example.elhabashyback.configuration.media.CloudinaryProperties;
 import com.example.elhabashyback.listing.dto.ListingMediaResponse;
 import com.example.elhabashyback.listing.entity.Listing;
@@ -13,6 +14,7 @@ import com.example.elhabashyback.listing.repository.ListingMediaRepository;
 import com.example.elhabashyback.listing.repository.ListingRepository;
 import com.example.elhabashyback.media.service.CloudinaryUploadResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,6 +89,7 @@ public class ListingMediaStateService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public ListingMediaResponse markReady(
             Long listingId,
             Long mediaId,
@@ -122,6 +125,7 @@ public class ListingMediaStateService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public void delete(Long listingId, Long mediaId) {
         ListingMedia media = getEntity(listingId, mediaId);
         mediaRepository.delete(media);

@@ -5,6 +5,7 @@ import com.example.elhabashyback.common.dto.PageResponse;
 import com.example.elhabashyback.common.exception.BadRequestException;
 import com.example.elhabashyback.common.exception.ConflictException;
 import com.example.elhabashyback.common.exception.ResourceNotFoundException;
+import com.example.elhabashyback.configuration.cache.CacheConfiguration;
 import com.example.elhabashyback.listing.dto.ListingResponse;
 import com.example.elhabashyback.listing.dto.ListingEngagementResponse;
 import com.example.elhabashyback.listing.dto.ListingSpecificationRequest;
@@ -22,6 +23,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +67,11 @@ public class ListingService {
     private volatile Boolean postgresFtsSupported;
 
     @Transactional(readOnly = true)
+    @Cacheable(
+            cacheNames = CacheConfiguration.PUBLIC_LISTINGS,
+            condition = "#p3 == null || #p3.isBlank()",
+            sync = true
+    )
     public PageResponse<ListingResponse> listPublic(
             String category,
             String status,
@@ -111,6 +119,7 @@ public class ListingService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public ListingResponse create(UpsertListingRequest request) {
         return ListingResponse.fromAdmin(createEntity(request));
     }
@@ -131,6 +140,7 @@ public class ListingService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public ListingResponse update(Long id, UpsertListingRequest request) {
         validateDates(request.publishDate(), request.expireDate());
         Listing listing = get(id);
@@ -146,6 +156,7 @@ public class ListingService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public ListingResponse updateStatus(Long id, ListingStatus status) {
         Listing listing = get(id);
         listing.setStatus(status);
@@ -154,6 +165,7 @@ public class ListingService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_LISTINGS, allEntries = true)
     public void delete(Long id) {
         Listing listing = get(id);
         listingRepository.delete(listing);
