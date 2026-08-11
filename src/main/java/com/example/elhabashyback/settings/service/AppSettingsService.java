@@ -1,10 +1,13 @@
 package com.example.elhabashyback.settings.service;
 
 import com.example.elhabashyback.settings.dto.AppSettingsResponse;
+import com.example.elhabashyback.configuration.cache.CacheConfiguration;
 import com.example.elhabashyback.settings.dto.UpdateAppSettingsRequest;
 import com.example.elhabashyback.settings.entity.AppSettings;
 import com.example.elhabashyback.settings.repository.AppSettingsRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,11 +20,13 @@ public class AppSettingsService {
     private final AppSettingsRepository repository;
 
     @Transactional
+    @Cacheable(cacheNames = CacheConfiguration.PUBLIC_SETTINGS, sync = true)
     public AppSettingsResponse get() {
         return AppSettingsResponse.from(repository.findById(SETTINGS_ID).orElseGet(this::createDefaults));
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfiguration.PUBLIC_SETTINGS, allEntries = true)
     public AppSettingsResponse update(UpdateAppSettingsRequest request) {
         AppSettings settings = repository.findById(SETTINGS_ID).orElseGet(this::defaults);
         settings.setWhatsappNumber(request.whatsappNumber().trim());
