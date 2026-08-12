@@ -17,6 +17,7 @@ public class CacheConfiguration {
     public static final String PUBLIC_ABOUT = "public-about";
     public static final String PUBLIC_SECTORS = "public-sectors";
     public static final String PUBLIC_SETTINGS = "public-settings";
+    public static final String PUBLIC_SERVICES = "public-services";
 
     @Bean
     CacheManager cacheManager() {
@@ -24,7 +25,8 @@ public class CacheConfiguration {
                 PUBLIC_LISTINGS,
                 PUBLIC_ABOUT,
                 PUBLIC_SECTORS,
-                PUBLIC_SETTINGS
+                PUBLIC_SETTINGS,
+                PUBLIC_SERVICES
         );
         manager.setCaffeine(Caffeine.newBuilder()
                 .maximumSize(500)

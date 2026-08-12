@@ -16,6 +16,7 @@ import com.example.elhabashyback.listing.entity.ListingStatus;
 import com.example.elhabashyback.listing.repository.ListingRepository;
 import com.example.elhabashyback.sector.entity.Sector;
 import com.example.elhabashyback.sector.repository.SectorRepository;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -229,13 +230,58 @@ public class ListingService {
             }
             if (search != null && !search.isBlank()) {
                 String pattern = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
+                var sector = root.join("sector", JoinType.INNER);
+                var specifications = root.join("specifications", JoinType.LEFT);
+                var media = root.join("media", JoinType.LEFT);
+                query.distinct(true);
                 predicates.add(builder.or(
+                        builder.like(builder.lower(root.get("slug")), pattern),
                         builder.like(builder.lower(root.get("titleAr")), pattern),
                         builder.like(builder.lower(root.get("titleEn")), pattern),
                         builder.like(builder.lower(root.get("summaryAr")), pattern),
                         builder.like(builder.lower(root.get("summaryEn")), pattern),
+                        builder.like(builder.lower(root.get("descriptionAr")), pattern),
+                        builder.like(builder.lower(root.get("descriptionEn")), pattern),
                         builder.like(builder.lower(root.get("cityAr")), pattern),
-                        builder.like(builder.lower(root.get("cityEn")), pattern)
+                        builder.like(builder.lower(root.get("cityEn")), pattern),
+                        builder.like(builder.lower(root.get("locationAr")), pattern),
+                        builder.like(builder.lower(root.get("locationEn")), pattern),
+                        builder.like(builder.lower(root.get("priceLabelAr")), pattern),
+                        builder.like(builder.lower(root.get("priceLabelEn")), pattern),
+                        builder.like(builder.lower(root.get("measureLabel")), pattern),
+                        builder.like(builder.lower(root.get("beneficiaryAr")), pattern),
+                        builder.like(builder.lower(root.get("beneficiaryEn")), pattern),
+                        builder.like(builder.lower(root.get("venueAr")), pattern),
+                        builder.like(builder.lower(root.get("venueEn")), pattern),
+                        builder.like(builder.lower(root.get("announcementSourceAr")), pattern),
+                        builder.like(builder.lower(root.get("announcementSourceEn")), pattern),
+                        builder.like(builder.lower(root.get("notesAr")), pattern),
+                        builder.like(builder.lower(root.get("notesEn")), pattern),
+                        builder.like(builder.lower(root.get("mapUrl")), pattern),
+                        builder.like(builder.lower(root.get("whatsappPhone")), pattern),
+                        builder.like(builder.lower(root.get("seoTitleAr")), pattern),
+                        builder.like(builder.lower(root.get("seoTitleEn")), pattern),
+                        builder.like(builder.lower(root.get("seoDescriptionAr")), pattern),
+                        builder.like(builder.lower(root.get("seoDescriptionEn")), pattern),
+                        builder.like(builder.lower(root.get("seoKeywordsAr")), pattern),
+                        builder.like(builder.lower(root.get("seoKeywordsEn")), pattern),
+                        builder.like(builder.lower(root.get("status").as(String.class)), pattern),
+                        builder.like(builder.lower(root.get("publishDate").as(String.class)), pattern),
+                        builder.like(builder.lower(root.get("expireDate").as(String.class)), pattern),
+                        builder.like(builder.lower(root.get("auctionDate").as(String.class)), pattern),
+                        builder.like(builder.lower(root.get("auctionTime").as(String.class)), pattern),
+                        builder.like(builder.lower(sector.get("code")), pattern),
+                        builder.like(builder.lower(sector.get("titleAr")), pattern),
+                        builder.like(builder.lower(sector.get("titleEn")), pattern),
+                        builder.like(builder.lower(sector.get("descriptionAr")), pattern),
+                        builder.like(builder.lower(sector.get("descriptionEn")), pattern),
+                        builder.like(builder.lower(specifications.get("labelAr")), pattern),
+                        builder.like(builder.lower(specifications.get("labelEn")), pattern),
+                        builder.like(builder.lower(specifications.get("valueAr")), pattern),
+                        builder.like(builder.lower(specifications.get("valueEn")), pattern),
+                        builder.like(builder.lower(media.get("fileName")), pattern),
+                        builder.like(builder.lower(media.get("contentType")), pattern),
+                        builder.like(builder.lower(media.get("mediaUrl")), pattern)
                 ));
             }
             return builder.and(predicates.toArray(Predicate[]::new));
