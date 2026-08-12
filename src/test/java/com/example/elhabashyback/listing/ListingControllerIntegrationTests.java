@@ -176,8 +176,9 @@ class ListingControllerIntegrationTests {
 
     @Test
     void adminCanCreateUpdateChangeStatusAndDeleteAListing() throws Exception {
+        String searchableBody = CREATE_BODY.replace("\"en\": \"Count\"", "\"en\": \"forensiczeta\"");
         String createdJson = mockMvc.perform(multipart("/api/v1/admin/listings")
-                        .file(listingPart(CREATE_BODY))
+                        .file(listingPart(searchableBody))
                         .file(image("thumbnail", "thumbnail.png"))
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
                 )
@@ -195,6 +196,12 @@ class ListingControllerIntegrationTests {
         verify(mediaUploadWorker).upload(any());
 
         Number id = JsonPath.read(createdJson, "$.id");
+
+        mockMvc.perform(get("/api/v1/public/listings")
+                        .param("q", "forensiczeta"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].slug").value("postman-test-equipment-auction"));
+
         String updatedBody = CREATE_BODY
                 .replace("Test Equipment Auction", "Updated Equipment Auction")
                 .replace("مزاد معدات للاختبار", "مزاد معدات محدث للاختبار");
