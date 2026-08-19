@@ -4,8 +4,13 @@ import com.example.elhabashyback.common.exception.BadRequestException;
 import com.example.elhabashyback.listing.importer.dto.WorkbookPreviewResponse;
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.ClientAnchor;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Drawing;
+import org.apache.poi.ss.usermodel.Picture;
+import org.apache.poi.ss.usermodel.PictureData;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Shape;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
@@ -15,6 +20,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -27,6 +34,7 @@ public class ExcelListingImportService {
     private static final int MAX_DATA_ROWS = 500;
     private static final int MAX_COLUMNS = 80;
     private static final int MAX_CELL_CHARACTERS = 20_000;
+    private static final int MAX_EMBEDDED_IMAGES = 10_500;
 
     public WorkbookPreviewResponse preview(MultipartFile file, int sheetIndex, int headerRow) {
         validateFile(file);
@@ -79,6 +87,8 @@ public class ExcelListingImportService {
                 ));
             }
 
+            Map<Integer, List<WorkbookPreviewResponse.EmbeddedImageResponse>> imagesByRow =
+                    extractEmbeddedImages(selected, headerIndex, columnCount);
             List<WorkbookPreviewResponse.RowResponse> rows = new ArrayList<>();
             for (int rowIndex = headerIndex + 1; rowIndex <= selected.getLastRowNum(); rowIndex++) {
                 Row row = selected.getRow(rowIndex);
@@ -95,7 +105,11 @@ public class ExcelListingImportService {
                             value(row.getCell(columnIndex), formatter)
                     );
                 }
-                rows.add(new WorkbookPreviewResponse.RowResponse(rowIndex + 1, values));
+                rows.add(new WorkbookPreviewResponse.RowResponse(
+                        rowIndex + 1,
+                        values,
+                        imagesByRow.getOrDefault(rowIndex, List.of())
+                ));
             }
 
             return new WorkbookPreviewResponse(
@@ -162,5 +176,65 @@ public class ExcelListingImportService {
             throw new BadRequestException("An Excel cell exceeds the 20,000 character limit");
         }
         return value;
+    }
+
+    private Map<Integer, List<WorkbookPreviewResponse.EmbeddedImageResponse>> extractEmbeddedImages(
+            Sheet sheet,
+            int headerIndex,
+            int columnCount
+    ) {
+        Map<Integer, List<WorkbookPreviewResponse.EmbeddedImageResponse>> imagesByRow = new HashMap<>();
+        Drawing<?> drawing = sheet.getDrawingPatriarch();
+        if (drawing == null) {
+            return imagesByRow;
+        }
+
+        long totalBytes = 0;
+        int imageCount = 0;
+        for (Shape shape : drawing) {
+            if (!(shape instanceof Picture picture)) {
+                continue;
+            }
+            ClientAnchor anchor = picture.getClientAnchor();
+            if (anchor == null
+                    || anchor.getRow1() <= headerIndex
+                    || anchor.getRow1() > sheet.getLastRowNum()
+                    || anchor.getCol1() < 0
+                    || anchor.getCol1() >= columnCount) {
+                continue;
+            }
+
+            PictureData pictureData = picture.getPictureData();
+            if (pictureData == null || !isSupportedImage(pictureData.getMimeType())) {
+                continue;
+            }
+            byte[] data = pictureData.getData();
+            totalBytes += data.length;
+            imageCount++;
+            if (imageCount > MAX_EMBEDDED_IMAGES || totalBytes > MAX_WORKBOOK_BYTES) {
+                throw new BadRequestException("Embedded Excel images must not exceed the workbook import limits");
+            }
+
+            String columnKey = CellReference.convertNumToColString(anchor.getCol1());
+            String extension = pictureData.suggestFileExtension();
+            String fileName = "row-" + (anchor.getRow1() + 1)
+                    + "-" + columnKey.toLowerCase(Locale.ROOT)
+                    + "-" + imageCount
+                    + "." + (extension == null || extension.isBlank() ? "png" : extension);
+            imagesByRow.computeIfAbsent(anchor.getRow1(), ignored -> new ArrayList<>())
+                    .add(new WorkbookPreviewResponse.EmbeddedImageResponse(
+                            columnKey,
+                            fileName,
+                            pictureData.getMimeType(),
+                            Base64.getEncoder().encodeToString(data)
+                    ));
+        }
+        return imagesByRow;
+    }
+
+    private boolean isSupportedImage(String contentType) {
+        return "image/jpeg".equalsIgnoreCase(contentType)
+                || "image/png".equalsIgnoreCase(contentType)
+                || "image/gif".equalsIgnoreCase(contentType);
     }
 }

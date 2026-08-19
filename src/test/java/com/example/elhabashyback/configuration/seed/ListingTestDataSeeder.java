@@ -18,10 +18,11 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
+// Test-only fixture. Production must start with no seeded listings.
 @Component
 @RequiredArgsConstructor
 @Order(30)
-public class ListingDataSeeder implements ApplicationRunner {
+public class ListingTestDataSeeder implements ApplicationRunner {
 
     private static final List<ListingSeed> LISTINGS = List.of(
             new ListingSeed("new-cairo-private-villa", "فيلا مستقلة بحديقة خاصة في التجمع الخامس", "Standalone Villa With Private Garden in New Cairo", "عقار سكني مميز جاهز للمعاينة مع مستندات واضحة.", "A premium residential asset prepared for inspection.", "real-estate", ListingStatus.ACTIVE, "القاهرة الجديدة", "New Cairo", "18.5 مليون جنيه", "EGP 18.5M", "420 m²", true),

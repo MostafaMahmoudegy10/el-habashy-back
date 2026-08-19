@@ -2,6 +2,8 @@ package com.example.elhabashyback.listing;
 
 import com.example.elhabashyback.auth.service.JwtTokenService;
 import com.example.elhabashyback.listing.entity.MediaRole;
+import com.example.elhabashyback.listing.entity.Listing;
+import com.example.elhabashyback.listing.repository.ListingRepository;
 import com.example.elhabashyback.listing.service.ListingMediaStateService;
 import com.example.elhabashyback.listing.service.ListingMediaUploadWorker;
 import com.example.elhabashyback.listing.service.PendingListingMedia;
@@ -25,6 +27,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -101,6 +105,9 @@ class ListingControllerIntegrationTests {
     @Autowired
     private ListingMediaStateService mediaStateService;
 
+    @Autowired
+    private ListingRepository listingRepository;
+
     private String adminToken;
     private String userToken;
 
@@ -140,6 +147,80 @@ class ListingControllerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].slug").value("new-cairo-private-villa"));
+
+        mockMvc.perform(get("/api/v1/public/listings")
+                        .param("q", "garde")
+                        .param("city", "New Cairo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].slug").value("new-cairo-private-villa"));
+
+        mockMvc.perform(get("/api/v1/public/listings/cities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].ar").isNotEmpty())
+                .andExpect(jsonPath("$[0].en").isNotEmpty());
+
+        mockMvc.perform(get("/api/v1/public/listings")
+                        .param("q", "!!!")
+                        .param("sort", "relevance,desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void dashboardSummaryComesFromCompleteAdminDatasetAndRequiresAdmin() throws Exception {
+        List<Listing> listings = listingRepository.findAll();
+        long totalViews = listings.stream().mapToLong(Listing::getViews).sum();
+        long totalWhatsapp = listings.stream().mapToLong(Listing::getWhatsappClicks).sum();
+        long active = listings.stream().filter(item -> item.getStatus().value().equals("active")).count();
+        Comparator<Listing> byViewsAndId = Comparator.comparingLong(Listing::getViews)
+                .thenComparing(Listing::getId);
+        Comparator<Listing> byWhatsappAndId = Comparator.comparingLong(Listing::getWhatsappClicks)
+                .thenComparing(Listing::getId);
+        Listing mostViewed = listings.stream().max(byViewsAndId).orElseThrow();
+        Listing mostContacted = listings.stream().max(byWhatsappAndId).orElseThrow();
+
+        mockMvc.perform(get("/api/v1/admin/listings/dashboard"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/admin/listings/dashboard")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalListings").value(listings.size()))
+                .andExpect(jsonPath("$.activeListings").value(active))
+                .andExpect(jsonPath("$.totalViews").value(totalViews))
+                .andExpect(jsonPath("$.totalWhatsappClicks").value(totalWhatsapp))
+                .andExpect(jsonPath("$.mostViewedListing.id").value(mostViewed.getId()))
+                .andExpect(jsonPath("$.mostContactedListing.id").value(mostContacted.getId()))
+                .andExpect(jsonPath("$.topContactedListings.length()")
+                        .value(Math.min(4, listings.size())));
+    }
+
+    @Test
+    void publicInsightsUseAllVisibleListingsOnly() throws Exception {
+        List<Listing> visible = listingRepository.findAll().stream()
+                .filter(item -> !item.getStatus().value().equals("inactive"))
+                .toList();
+        long active = visible.stream().filter(item -> item.getStatus().value().equals("active")).count();
+        long totalViews = visible.stream().mapToLong(Listing::getViews).sum();
+        long totalWhatsapp = visible.stream().mapToLong(Listing::getWhatsappClicks).sum();
+        Listing mostViewed = visible.stream()
+                .max(Comparator.comparingLong(Listing::getViews).thenComparing(Listing::getId))
+                .orElseThrow();
+        Listing mostContacted = visible.stream()
+                .max(Comparator.comparingLong(Listing::getWhatsappClicks).thenComparing(Listing::getId))
+                .orElseThrow();
+
+        mockMvc.perform(get("/api/v1/public/listings/insights"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalListings").value(visible.size()))
+                .andExpect(jsonPath("$.activeListings").value(active))
+                .andExpect(jsonPath("$.totalViews").value(totalViews))
+                .andExpect(jsonPath("$.totalWhatsappClicks").value(totalWhatsapp))
+                .andExpect(jsonPath("$.mostViewedListing.id").value(mostViewed.getId()))
+                .andExpect(jsonPath("$.topContactedListings[0].id").value(mostContacted.getId()))
+                .andExpect(jsonPath("$.topContactedListings.length()")
+                        .value(Math.min(5, visible.size())));
     }
 
     @Test
