@@ -2,6 +2,7 @@ package com.example.elhabashyback.listing.controller;
 
 import com.example.elhabashyback.common.dto.PageResponse;
 import com.example.elhabashyback.listing.dto.ListingResponse;
+import com.example.elhabashyback.listing.dto.ListingDashboardResponse;
 import com.example.elhabashyback.listing.dto.UpdateListingStatusRequest;
 import com.example.elhabashyback.listing.dto.UpsertListingRequest;
 import com.example.elhabashyback.listing.service.ListingService;
@@ -44,11 +45,17 @@ public class AdminListingController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Boolean featured,
             @RequestParam(name = "q", required = false) String search,
+            @RequestParam(required = false) String city,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-            @RequestParam(defaultValue = "createdAt,desc") String sort
+            @RequestParam(required = false) String sort
     ) {
-        return listingService.listAdmin(category, status, featured, search, page, size, sort);
+        return listingService.listAdmin(category, status, featured, search, city, page, size, sort);
+    }
+
+    @GetMapping("/dashboard")
+    ListingDashboardResponse dashboard() {
+        return listingService.dashboard();
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -27,7 +27,16 @@ public record WorkbookPreviewResponse(
 
     public record RowResponse(
             int rowNumber,
-            Map<String, String> values
+            Map<String, String> values,
+            List<EmbeddedImageResponse> images
+    ) {
+    }
+
+    public record EmbeddedImageResponse(
+            String columnKey,
+            String fileName,
+            String contentType,
+            String dataBase64
     ) {
     }
 }

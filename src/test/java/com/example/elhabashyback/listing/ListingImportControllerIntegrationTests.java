@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -55,6 +56,9 @@ class ListingImportControllerIntegrationTests {
                 .andExpect(jsonPath("$.rows[0].rowNumber").value(2))
                 .andExpect(jsonPath("$.rows[0].values.A").value("مزاد تحف"))
                 .andExpect(jsonPath("$.rows[0].values.B").value("Antiques auction"))
+                .andExpect(jsonPath("$.rows[0].images.length()").value(1))
+                .andExpect(jsonPath("$.rows[0].images[0].columnKey").value("D"))
+                .andExpect(jsonPath("$.rows[0].images[0].contentType").value("image/png"))
                 .andExpect(jsonPath("$.totalRows").value(1));
     }
 
@@ -77,10 +81,21 @@ class ListingImportControllerIntegrationTests {
             header.createCell(0).setCellValue("العنوان العربي");
             header.createCell(1).setCellValue("English title");
             header.createCell(2).setCellValue("القسم");
+            header.createCell(3).setCellValue("الصورة الرئيسية");
             var row = listings.createRow(1);
             row.createCell(0).setCellValue("مزاد تحف");
             row.createCell(1).setCellValue("Antiques auction");
             row.createCell(2).setCellValue("antiques");
+            int pictureIndex = workbook.addPicture(
+                    Base64.getDecoder().decode(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+                    XSSFWorkbook.PICTURE_TYPE_PNG
+            );
+            var drawing = listings.createDrawingPatriarch();
+            var anchor = workbook.getCreationHelper().createClientAnchor();
+            anchor.setRow1(1);
+            anchor.setCol1(3);
+            drawing.createPicture(anchor, pictureIndex);
             workbook.write(output);
             return new MockMultipartFile(
                     "file",

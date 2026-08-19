@@ -1,12 +1,15 @@
 package com.example.elhabashyback.listing.service;
 
 import com.example.elhabashyback.common.dto.LocalizedTextRequest;
+import com.example.elhabashyback.common.dto.LocalizedTextResponse;
 import com.example.elhabashyback.common.dto.PageResponse;
 import com.example.elhabashyback.common.exception.BadRequestException;
 import com.example.elhabashyback.common.exception.ConflictException;
 import com.example.elhabashyback.common.exception.ResourceNotFoundException;
 import com.example.elhabashyback.configuration.cache.CacheConfiguration;
 import com.example.elhabashyback.listing.dto.ListingResponse;
+import com.example.elhabashyback.listing.dto.ListingDashboardResponse;
+import com.example.elhabashyback.listing.dto.PublicListingInsightsResponse;
 import com.example.elhabashyback.listing.dto.ListingEngagementResponse;
 import com.example.elhabashyback.listing.dto.ListingSpecificationRequest;
 import com.example.elhabashyback.listing.dto.UpsertListingRequest;
@@ -78,11 +81,12 @@ public class ListingService {
             String status,
             Boolean featured,
             String search,
+            String city,
             int page,
             int size,
             String sort
     ) {
-        return list(category, status, featured, search, true, page, size, sort);
+        return list(category, status, featured, search, city, true, page, size, sort);
     }
 
     @Transactional(readOnly = true)
@@ -91,11 +95,75 @@ public class ListingService {
             String status,
             Boolean featured,
             String search,
+            String city,
             int page,
             int size,
             String sort
     ) {
-        return list(category, status, featured, search, false, page, size, sort);
+        return list(category, status, featured, search, city, false, page, size, sort);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LocalizedTextResponse> listPublicCities() {
+        return listingRepository.findPublicCities(ListingStatus.INACTIVE).stream()
+                .map(row -> new LocalizedTextResponse((String) row[0], (String) row[1]))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PublicListingInsightsResponse publicInsights() {
+        Specification<Listing> visible = filters(null, null, null, "", null, true);
+        ListingResponse mostViewed = listingRepository
+                .findAll(visible, PageRequest.of(0, 1, Sort.by(
+                        Sort.Order.desc("views"),
+                        Sort.Order.desc("id")
+                )))
+                .stream()
+                .findFirst()
+                .map(ListingResponse::fromPublic)
+                .orElse(null);
+        List<ListingResponse> topContacted = listingRepository
+                .findAll(visible, PageRequest.of(0, 5, Sort.by(
+                        Sort.Order.desc("whatsappClicks"),
+                        Sort.Order.desc("id")
+                )))
+                .stream()
+                .map(ListingResponse::fromPublic)
+                .toList();
+
+        return new PublicListingInsightsResponse(
+                listingRepository.countByStatusNot(ListingStatus.INACTIVE),
+                listingRepository.countByStatus(ListingStatus.ACTIVE),
+                listingRepository.sumPublicViews(ListingStatus.INACTIVE),
+                listingRepository.sumPublicWhatsappClicks(ListingStatus.INACTIVE),
+                mostViewed,
+                topContacted
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ListingDashboardResponse dashboard() {
+        Sort viewedSort = Sort.by(Sort.Order.desc("views"), Sort.Order.desc("id"));
+        Sort contactedSort = Sort.by(Sort.Order.desc("whatsappClicks"), Sort.Order.desc("id"));
+        ListingResponse mostViewed = listingRepository.findAll(PageRequest.of(0, 1, viewedSort)).stream()
+                .findFirst()
+                .map(ListingResponse::fromAdmin)
+                .orElse(null);
+        List<ListingResponse> topContacted = listingRepository
+                .findAll(PageRequest.of(0, 4, contactedSort))
+                .stream()
+                .map(ListingResponse::fromAdmin)
+                .toList();
+
+        return new ListingDashboardResponse(
+                listingRepository.count(),
+                listingRepository.countByStatus(ListingStatus.ACTIVE),
+                listingRepository.sumViews(),
+                listingRepository.sumWhatsappClicks(),
+                mostViewed,
+                topContacted.isEmpty() ? null : topContacted.get(0),
+                topContacted
+        );
     }
 
     @Transactional
@@ -178,25 +246,57 @@ public class ListingService {
             String statusValue,
             Boolean featured,
             String search,
+            String city,
             boolean publicOnly,
             int page,
             int size,
             String sort
     ) {
         ListingStatus status = parseStatus(statusValue);
-        String searchTerm = search == null ? "" : search.trim();
+        boolean searchWasProvided = search != null && !search.isBlank();
+        String searchTerm = ListingSearchQuery.normalize(search);
+        boolean emptyNormalizedSearch = searchWasProvided && searchTerm.isBlank();
         boolean useFullTextSearch = !searchTerm.isBlank() && supportsPostgresFts();
-        Pageable pageable = PageRequest.of(page, size, parseSort(sort, useFullTextSearch));
-        Page<Listing> listings = useFullTextSearch
-                ? listingRepository.searchFullText(
-                        normalizedCategory(category),
-                        status == null ? "" : status.name(),
-                        featured,
-                        publicOnly,
-                        searchTerm,
-                        pageable
-                )
-                : listingRepository.findAll(filters(category, status, featured, searchTerm, publicOnly), pageable);
+        boolean relevanceSort = !emptyNormalizedSearch && isRelevanceSort(sort, useFullTextSearch);
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                relevanceSort
+                        ? Sort.unsorted()
+                        : emptyNormalizedSearch
+                                ? Sort.by(Sort.Direction.DESC, "createdAt")
+                                : parseSort(sort, useFullTextSearch)
+        );
+        Page<Listing> listings;
+        if (emptyNormalizedSearch) {
+            listings = Page.empty(pageable);
+        } else if (useFullTextSearch) {
+            String searchQuery = ListingSearchQuery.toPrefixTsQuery(searchTerm);
+            listings = relevanceSort
+                    ? listingRepository.searchFullTextRanked(
+                            normalizedCategory(category),
+                            status == null ? "" : status.name(),
+                            featured,
+                            publicOnly,
+                            normalizedCity(city),
+                            searchQuery,
+                            pageable
+                    )
+                    : listingRepository.searchFullText(
+                            normalizedCategory(category),
+                            status == null ? "" : status.name(),
+                            featured,
+                            publicOnly,
+                            normalizedCity(city),
+                            searchQuery,
+                            pageable
+                    );
+        } else {
+            listings = listingRepository.findAll(
+                    filters(category, status, featured, searchTerm, city, publicOnly),
+                    pageable
+            );
+        }
         Page<ListingResponse> result = listings
                 .map(listing -> publicOnly
                         ? ListingResponse.fromPublic(listing)
@@ -209,6 +309,7 @@ public class ListingService {
             ListingStatus status,
             Boolean featured,
             String search,
+            String city,
             boolean publicOnly
     ) {
         return (root, query, builder) -> {
@@ -227,6 +328,13 @@ public class ListingService {
             }
             if (featured != null) {
                 predicates.add(builder.equal(root.get("featured"), featured));
+            }
+            if (city != null && !city.isBlank()) {
+                String normalizedCity = city.trim().toLowerCase(Locale.ROOT);
+                predicates.add(builder.or(
+                        builder.equal(builder.lower(root.get("cityAr")), normalizedCity),
+                        builder.equal(builder.lower(root.get("cityEn")), normalizedCity)
+                ));
             }
             if (search != null && !search.isBlank()) {
                 String pattern = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
@@ -302,10 +410,35 @@ public class ListingService {
         return Sort.by(direction, field);
     }
 
+    private boolean isRelevanceSort(String sortValue, boolean fullTextSearch) {
+        String value = sortValue == null || sortValue.isBlank()
+                ? (fullTextSearch ? "relevance,desc" : "createdAt,desc")
+                : sortValue.trim();
+        String[] parts = value.split(",", 2);
+        if (!"relevance".equals(parts[0])) {
+            return false;
+        }
+        if (!fullTextSearch) {
+            throw new BadRequestException("Relevance sorting requires a search query");
+        }
+        Sort.Direction direction = parts.length == 1
+                ? Sort.Direction.DESC
+                : Sort.Direction.fromOptionalString(parts[1]).orElseThrow(
+                        () -> new BadRequestException("Sort direction must be asc or desc"));
+        if (direction != Sort.Direction.DESC) {
+            throw new BadRequestException("Relevance sorting only supports desc direction");
+        }
+        return true;
+    }
+
     private String normalizedCategory(String category) {
         return category == null || category.isBlank()
                 ? ""
                 : category.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizedCity(String city) {
+        return city == null || city.isBlank() ? "" : city.trim();
     }
 
     private boolean supportsPostgresFts() {
